@@ -4,6 +4,7 @@
   import ClusterBar from '../components/ClusterBar.svelte';
   import NodeCard from '../components/NodeCard.svelte';
   import MetaBadge from '../components/MetaBadge.svelte';
+  import TimePicker from '../components/TimePicker.svelte';
 
   const owed = $derived(app.state?.owed ?? false);
   const streak = $derived(app.session?.streak ?? 0);
@@ -91,7 +92,7 @@
       </div>
       {#if editing}
         <div class="edit-row">
-          <input type="time" bind:value={newTime} style="width: 140px;" class="mono" />
+          <TimePicker bind:value={newTime} />
           <button class="ghost mono-ghost" onclick={saveTime}>{saved ? 'saved ✓' : 'apply'}</button>
         </div>
       {/if}

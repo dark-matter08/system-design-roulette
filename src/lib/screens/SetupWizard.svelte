@@ -4,6 +4,7 @@
   import ClusterBar from '../components/ClusterBar.svelte';
   import NodeCard from '../components/NodeCard.svelte';
   import StatusLED from '../components/StatusLED.svelte';
+  import TimePicker from '../components/TimePicker.svelte';
 
   let time = $state('19:00');
   let phrase = $state('I am choosing to skip my training today and I accept the broken streak');
@@ -55,7 +56,7 @@
           {#snippet children()}
             <div class="meta-label">FIRE_AT — daily trigger</div>
             <div class="time-row">
-              <input class="time-input mono" type="time" bind:value={time} />
+              <TimePicker bind:value={time} />
               <span class="hint">local time<br />retry: on-wake</span>
             </div>
           {/snippet}
@@ -185,15 +186,6 @@
     align-items: center;
     gap: 10px;
     margin-top: 6px;
-  }
-  .time-input {
-    font-family: var(--font-mono);
-    font-size: 20px;
-    width: 130px;
-    background: var(--bg);
-    border: 1px solid var(--node-border);
-    border-radius: 6px;
-    padding: 6px 12px;
   }
   .hint {
     font-family: var(--font-mono);
