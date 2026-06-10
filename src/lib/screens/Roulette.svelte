@@ -42,7 +42,10 @@
     <div class="center"><StatusLED tone="pending" label="loading pool…" /></div>
   {:else}
     <div class="roulette-body">
-      <div class="meta-label">TOPIC_SELECTOR — pool: 72 concepts · today's shard</div>
+      <div class="meta-label">
+        TOPIC_SELECTOR — pool: {data.pool_unlocked}/{data.pool_total} unlocked · {data.pool_total -
+          data.pool_unlocked} provisioning
+      </div>
       <Wheel bind:this={wheel} pool={data.pool} chosenIndex={data.chosen_index} onLanded={landed} />
       {#if phase === 'ready'}
         <button class="cta mono-cta" onclick={spin}>⟳ spin</button>

@@ -247,6 +247,8 @@ export const mockApi = {
     chosen_index: 3,
     concept_title: 'Consistent hashing and virtual nodes',
     concept_category: 'storage',
+    pool_unlocked: 31,
+    pool_total: 72,
   }),
   ensureCourse: async (): Promise<CourseView> => ({
     title: 'Consistent hashing and virtual nodes',

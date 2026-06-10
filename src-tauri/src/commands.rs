@@ -397,6 +397,8 @@ pub struct RouletteView {
     pub chosen_index: usize,
     pub concept_title: String,
     pub concept_category: String,
+    pub pool_unlocked: usize,
+    pub pool_total: usize,
 }
 
 #[tauri::command]
@@ -426,9 +428,11 @@ pub fn get_roulette(state: State<'_, AppState>) -> CmdResult<RouletteView> {
             }
         }
     };
-    // Build a wheel pool: chosen + up to 11 other titles.
-    let mut pool: Vec<String> = db::all_concepts(&conn)
-        .map_err(err)?
+    // Build a wheel pool from UNLOCKED concepts only: chosen + up to 11 others.
+    let (unlocked, locked) = crate::roulette::pool_status(&conn).map_err(err)?;
+    let pool_unlocked = unlocked.len();
+    let pool_total = pool_unlocked + locked.len();
+    let mut pool: Vec<String> = unlocked
         .into_iter()
         .filter(|c| c.id != concept.id)
         .take(11)
@@ -441,6 +445,8 @@ pub fn get_roulette(state: State<'_, AppState>) -> CmdResult<RouletteView> {
         chosen_index,
         concept_title: concept.title,
         concept_category: concept.category,
+        pool_unlocked,
+        pool_total,
     })
 }
 

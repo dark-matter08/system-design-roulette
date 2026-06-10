@@ -52,6 +52,8 @@ export interface RouletteView {
   chosen_index: number;
   concept_title: string;
   concept_category: string;
+  pool_unlocked: number;
+  pool_total: number;
 }
 
 export interface Resource {

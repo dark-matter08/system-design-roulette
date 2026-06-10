@@ -24,6 +24,7 @@ pub struct Concept {
     pub weight: f64,
     pub times_picked: i64,
     pub last_picked_date: Option<String>,
+    pub tier: i64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -82,7 +83,9 @@ CREATE TABLE IF NOT EXISTS concepts (
     weight REAL NOT NULL DEFAULT 1.0,
     times_picked INTEGER NOT NULL DEFAULT 0,
     last_picked_date TEXT,
-    active INTEGER NOT NULL DEFAULT 1
+    active INTEGER NOT NULL DEFAULT 1,
+    tier INTEGER NOT NULL DEFAULT 0,
+    prereqs_json TEXT NOT NULL DEFAULT '[]'
 );
 CREATE TABLE IF NOT EXISTS sessions (
     date TEXT PRIMARY KEY,
@@ -165,6 +168,14 @@ pub fn open(path: &PathBuf) -> Result<Connection> {
     let conn = Connection::open(path)?;
     conn.execute_batch("PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON;")?;
     conn.execute_batch(SCHEMA)?;
+    // Column migrations for pre-existing databases (IF NOT EXISTS only covers
+    // new tables). Duplicate-column errors mean already migrated — ignore.
+    for ddl in [
+        "ALTER TABLE concepts ADD COLUMN tier INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE concepts ADD COLUMN prereqs_json TEXT NOT NULL DEFAULT '[]'",
+    ] {
+        let _ = conn.execute_batch(ddl);
+    }
     Ok(conn)
 }
 
@@ -174,13 +185,24 @@ pub fn seed_concepts(conn: &Connection, seed_json: &str) -> Result<usize> {
         slug: String,
         title: String,
         category: String,
+        #[serde(default)]
+        tier: i64,
+        #[serde(default)]
+        prereqs: Vec<String>,
     }
     let seeds: Vec<SeedConcept> = serde_json::from_str(seed_json)?;
     let mut inserted = 0;
     for s in seeds {
+        let prereqs_json = serde_json::to_string(&s.prereqs)?;
         inserted += conn.execute(
-            "INSERT OR IGNORE INTO concepts (slug, title, category) VALUES (?1, ?2, ?3)",
-            params![s.slug, s.title, s.category],
+            "INSERT OR IGNORE INTO concepts (slug, title, category, tier, prereqs_json) VALUES (?1, ?2, ?3, ?4, ?5)",
+            params![s.slug, s.title, s.category, s.tier, prereqs_json],
+        )?;
+        // Curriculum metadata always refreshes from seed (existing installs
+        // pick up tier/prereq changes); progress columns are never touched.
+        conn.execute(
+            "UPDATE concepts SET title = ?2, category = ?3, tier = ?4, prereqs_json = ?5 WHERE slug = ?1",
+            params![s.slug, s.title, s.category, s.tier, prereqs_json],
         )?;
     }
     Ok(inserted)
@@ -403,7 +425,7 @@ pub fn carryover_count(conn: &Connection, due_by: &str) -> Result<i64> {
 /// Pool restricted to least-picked active concepts: full pool exhausts before repeats.
 pub fn roulette_pool(conn: &Connection) -> Result<Vec<Concept>> {
     let mut stmt = conn.prepare(
-        "SELECT id, slug, title, category, weight, times_picked, last_picked_date
+        "SELECT id, slug, title, category, weight, times_picked, last_picked_date, tier
          FROM concepts
          WHERE active = 1
            AND times_picked = (SELECT MIN(times_picked) FROM concepts WHERE active = 1)",
@@ -417,6 +439,7 @@ pub fn roulette_pool(conn: &Connection) -> Result<Vec<Concept>> {
             weight: r.get(4)?,
             times_picked: r.get(5)?,
             last_picked_date: r.get(6)?,
+            tier: r.get(7)?,
         })
     })?;
     Ok(rows.collect::<std::result::Result<Vec<_>, _>>()?)
@@ -424,7 +447,7 @@ pub fn roulette_pool(conn: &Connection) -> Result<Vec<Concept>> {
 
 pub fn all_concepts(conn: &Connection) -> Result<Vec<Concept>> {
     let mut stmt = conn.prepare(
-        "SELECT id, slug, title, category, weight, times_picked, last_picked_date
+        "SELECT id, slug, title, category, weight, times_picked, last_picked_date, tier
          FROM concepts WHERE active = 1 ORDER BY title",
     )?;
     let rows = stmt.query_map([], |r| {
@@ -436,6 +459,7 @@ pub fn all_concepts(conn: &Connection) -> Result<Vec<Concept>> {
             weight: r.get(4)?,
             times_picked: r.get(5)?,
             last_picked_date: r.get(6)?,
+            tier: r.get(7)?,
         })
     })?;
     Ok(rows.collect::<std::result::Result<Vec<_>, _>>()?)
@@ -443,7 +467,7 @@ pub fn all_concepts(conn: &Connection) -> Result<Vec<Concept>> {
 
 pub fn get_concept(conn: &Connection, id: i64) -> Result<Option<Concept>> {
     let mut stmt = conn.prepare(
-        "SELECT id, slug, title, category, weight, times_picked, last_picked_date
+        "SELECT id, slug, title, category, weight, times_picked, last_picked_date, tier
          FROM concepts WHERE id = ?1",
     )?;
     let mut rows = stmt.query(params![id])?;
@@ -456,6 +480,7 @@ pub fn get_concept(conn: &Connection, id: i64) -> Result<Option<Concept>> {
             weight: r.get(4)?,
             times_picked: r.get(5)?,
             last_picked_date: r.get(6)?,
+            tier: r.get(7)?,
         }),
         None => None,
     })

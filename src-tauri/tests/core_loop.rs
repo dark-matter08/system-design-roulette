@@ -25,19 +25,48 @@ fn seed_pool_loads() {
 }
 
 #[test]
-fn roulette_exhausts_pool_before_repeats() {
+fn roulette_exhausts_unlocked_pool_before_repeats() {
     let conn = test_db();
-    let total = db::all_concepts(&conn).unwrap().len();
+    // Fresh install: only no-prereq (tier 0) concepts are on the wheel.
+    let (unlocked, locked) = system_design_roulette_lib::roulette::pool_status(&conn).unwrap();
+    assert!(unlocked.len() >= 10, "day-1 wheel too small: {}", unlocked.len());
+    assert!(!locked.is_empty(), "everything unlocked on day 1 defeats the curriculum");
+    assert!(unlocked.iter().all(|c| c.tier == 0), "fresh db should unlock only tier 0");
+
     let mut seen = std::collections::HashSet::new();
-    for i in 0..total {
+    for i in 0..unlocked.len() {
         let c = system_design_roulette_lib::roulette::draw(&conn, &format!("2026-01-{:02}", (i % 28) + 1))
             .unwrap()
             .expect("pool non-empty");
-        assert!(seen.insert(c.id), "concept {} repeated before pool exhausted", c.slug);
+        assert!(seen.insert(c.id), "concept {} repeated before unlocked pool exhausted", c.slug);
+        assert_eq!(c.tier, 0, "locked concept {} drawn", c.slug);
     }
-    // Pool exhausted: next draw must still work (second lap).
+    // Unlocked pool exhausted: next draw must still work (second lap).
     let again = system_design_roulette_lib::roulette::draw(&conn, "2026-02-01").unwrap();
     assert!(again.is_some());
+}
+
+#[test]
+fn concepts_unlock_at_seventy_percent_prereqs() {
+    use system_design_roulette_lib::{mastery, roulette};
+    let conn = test_db();
+    // quorums requires cap-theorem + consistency-models.
+    let id_of = |slug: &str| -> i64 {
+        conn.query_row("SELECT id FROM concepts WHERE slug = ?1", [slug], |r| r.get(0)).unwrap()
+    };
+    let quorums = id_of("quorums");
+    let locked_ids = |conn: &rusqlite::Connection| -> std::collections::HashSet<i64> {
+        roulette::pool_status(conn).unwrap().1.into_iter().map(|c| c.id).collect()
+    };
+    assert!(locked_ids(&conn).contains(&quorums), "quorums should start locked");
+
+    // One of two prereqs practiced: 50% < 70%, still locked.
+    mastery::record_quiz_outcome(&conn, id_of("cap-theorem"), "2026-06-02", 1.0).unwrap();
+    assert!(locked_ids(&conn).contains(&quorums), "50% prereqs must not unlock");
+
+    // Both practiced: unlocked.
+    mastery::record_quiz_outcome(&conn, id_of("consistency-models"), "2026-06-03", 1.0).unwrap();
+    assert!(!locked_ids(&conn).contains(&quorums), "100% prereqs must unlock quorums");
 }
 
 #[test]
