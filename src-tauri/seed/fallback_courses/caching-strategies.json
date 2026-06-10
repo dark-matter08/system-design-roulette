@@ -1,0 +1,41 @@
+{
+  "slug": "caching-strategies",
+  "title": "Caching strategies: write-through, aside, back",
+  "markdown": "## Why this matters\n\nCaching is the highest-leverage performance tool in system design and the most common source of subtle correctness bugs. \"How do you keep the cache consistent with the database?\" is a question with no perfect answer — only trade-offs you must be able to articulate.\n\n## Core mechanics\n\n### Cache-aside (lazy loading)\nThe application owns the logic: read → miss → load from DB → populate cache. Writes go to the DB and **invalidate** (delete, not update) the cache key. This is the default pattern: simple, cache failures are non-fatal, and only requested data is cached. Costs: every miss pays a DB round trip plus a write to the cache, and there is a race — two concurrent readers on a miss both hit the DB; worse, a reader can populate stale data if it read the DB before a concurrent write committed.\n\n### Write-through\nWrites go to the cache, which synchronously writes to the DB. Reads are always warm for recently-written data, and cache and DB never diverge for written keys. Costs: write latency includes both systems, and you cache data that may never be read.\n\n### Write-back (write-behind)\nWrites go to the cache and are flushed to the DB asynchronously, in batches. Spectacular write throughput; used inside databases themselves (page caches, LSM memtables). Cost: a crash before flush loses acknowledged writes — only acceptable with replication of the cache layer or for data you can afford to lose.\n\n### Invalidation: delete, don't update\nOn write, deleting the cache key beats updating it: updates race with each other (two writes can land in cache out of order) while deletes converge — the next read repopulates from the source of truth. Pair with TTLs as a backstop for missed invalidations.\n\n### Stampede protection\nWhen a hot key expires, thousands of requests miss simultaneously and crush the DB (dogpile). Defenses: per-key request coalescing/locking (one loader, others wait), probabilistic early refresh (refresh before expiry with probability rising as TTL nears), or serving stale while revalidating in the background.\n\n## Trade-offs and failure modes\n\n- Cache-aside risks brief staleness between DB commit and invalidation; write-through pays latency for consistency; write-back trades durability for throughput.\n- TTLs are a blunt safety net: short TTL = more DB load, long TTL = longer staleness windows.\n- Negative caching (caching \"not found\") prevents repeated misses for absent keys but must be short-TTL or creation events appear delayed.\n- Hot-key failure: if one key takes 100k req/s and its cache node dies, the DB inherits that load instantly. Replicate hot keys or layer an in-process cache above the distributed one.\n\n## Real-world example\n\nFacebook's memcache deployment (the NSDI '13 paper) is the canonical cache-aside-at-scale story: deletes on write, leases to prevent both stampedes and a stale-set race (a lease token must accompany the set after a miss), and regional invalidation streams driven by the DB replication log so caches in every region converge.\n\n## Interview framing\n\nName cache-aside as your default, then immediately address invalidation (delete on write + TTL backstop) and stampede protection — interviewers probe those two. If asked about strong consistency, say so plainly: caches give you eventual consistency; if a read must be linearizable, read the DB.\n\n## Key takeaways\n\n- Cache-aside with delete-on-write and TTL backstop is the production default.\n- Update-in-place on write races; deletion converges.\n- Write-back buys throughput by risking acknowledged-write loss.\n- Every hot-key design needs a stampede story: coalescing, early refresh, or stale-while-revalidate.",
+  "resources": [],
+  "key_takeaways": [
+    "Cache-aside with delete-on-write invalidation plus a TTL backstop is the default production pattern.",
+    "Delete instead of update on writes: concurrent updates race, deletes converge.",
+    "Write-through buys read-after-write warmth at write latency cost; write-back buys throughput at durability cost.",
+    "Hot keys need stampede protection: request coalescing, probabilistic early refresh, or stale-while-revalidate.",
+    "Caches are eventually consistent by nature; linearizable reads must go to the source of truth."
+  ],
+  "questions": [
+    {
+      "prompt": "On a write in a cache-aside system, why is deleting the cache key generally safer than updating it with the new value?",
+      "kind": "mcq",
+      "choices": [
+        "Deletes are cheaper than sets in most caches",
+        "Concurrent updates can land in the cache out of order leaving stale data forever; deletes force the next read to repopulate from the source of truth",
+        "Updating the cache requires a distributed transaction",
+        "Deleted keys are automatically repopulated by the cache itself"
+      ],
+      "correct_answer": "Concurrent updates can land in the cache out of order leaving stale data forever; deletes force the next read to repopulate from the source of truth",
+      "explanation": "Two racing writers can set the cache in the opposite order to their DB commits, pinning stale data until TTL. Deletion converges because the next reader reloads from the DB."
+    },
+    {
+      "prompt": "Which write strategy can lose acknowledged writes on a crash?",
+      "kind": "mcq",
+      "choices": ["Cache-aside", "Write-through", "Write-back", "Read-through"],
+      "correct_answer": "Write-back",
+      "explanation": "Write-back acknowledges the write once it is in the cache and flushes to the database later; a crash in between loses the write unless the cache layer itself is replicated/durable."
+    },
+    {
+      "prompt": "A hot cache key with a 5-minute TTL expires and your database immediately receives 40,000 identical queries. Name this failure mode and describe two distinct mitigations.",
+      "kind": "free",
+      "choices": null,
+      "correct_answer": "This is a cache stampede (dogpile). Mitigations: (1) request coalescing or per-key locking so only one request reloads while others wait or get stale data; (2) probabilistic early refresh or background refresh so the key is renewed before expiry; (3) stale-while-revalidate, serving the expired value while one background fetch updates it.",
+      "explanation": "Any two of coalescing/locking, early refresh, or stale-while-revalidate demonstrate understanding; the key insight is collapsing N concurrent loads into one."
+    }
+  ]
+}

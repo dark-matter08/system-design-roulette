@@ -1,0 +1,46 @@
+{
+  "slug": "consistent-hashing",
+  "title": "Consistent hashing and virtual nodes",
+  "markdown": "## Why this matters\n\nAny system that spreads keys across N nodes — caches, distributed databases, message partitions — must answer: what happens when N changes? Naive `hash(key) mod N` remaps nearly every key when a node joins or leaves, which at scale means a self-inflicted cache wipe or a rebalancing storm. Consistent hashing is the standard fix and a building block you will reuse in countless designs.\n\n## Core mechanics\n\n### The ring\nMap the hash space (say 0 to 2^64-1) onto a conceptual ring. Hash each node onto the ring; hash each key onto the ring; a key belongs to the first node clockwise from it. When a node joins, it takes keys only from its clockwise successor; when it leaves, its keys go only to its successor. Expected fraction of keys that move: K/N — the theoretical minimum.\n\n### The variance problem\nWith one point per node, the gaps between nodes are wildly uneven — some nodes own several times their fair share. Worse, a departing node dumps its entire range onto one successor.\n\n### Virtual nodes\nHash each physical node onto the ring at many points (typically 100-1000 \"vnodes\"). Benefits: (1) load variance shrinks roughly with the square root of the vnode count; (2) a leaving node's ranges scatter across many successors, spreading the rebalancing load; (3) heterogeneous hardware gets proportional vnode counts (a 2x machine gets 2x vnodes). Cost: the ring's routing table grows (N × vnodes entries), and range scans across owners get more fragmented.\n\n### Implementation sketch\nA sorted array or tree of (hash, node) pairs; lookup = binary search for the first entry ≥ hash(key), wrapping at the end. O(log(N·V)) per lookup, trivially cacheable.\n\n### Alternatives worth knowing\n- **Rendezvous (HRW) hashing**: for each key, score every node with hash(key, node) and pick the max. No ring, perfectly uniform, minimal movement — but O(N) per lookup unless layered.\n- **Jump consistent hash**: O(1), zero memory, beautifully uniform — but only supports numbered buckets added/removed at the end, so it fits storage shard counts, not arbitrary node churn.\n- **Maglev hashing**: Google's lookup-table variant optimized for load balancers — O(1) lookups with minimal disruption on backend changes.\n\n## Trade-offs and failure modes\n\n- Vnode count is a dial: more vnodes = smoother distribution but bigger routing tables and more fragmented ranges. Cassandra's default moved from 256 to 16 as clusters grew — high vnode counts hurt repair and streaming.\n- Consistent hashing balances *key counts*, not *load*: one celebrity key still overwhelms its owner (hot partition). Fixes live above the ring: key salting, request-level caching, or splitting hot keys.\n- Ring membership must itself be consistent: if two routers disagree about membership (gossip lag), the same key routes to different nodes — design for brief divergence (read repair, hinted handoff).\n\n## Real-world example\n\nAmazon's Dynamo paper popularized the ring with vnodes; Cassandra and Riak inherited it. DynamoDB-style systems pair the ring with replication: a key is stored on its owner plus the next R-1 distinct physical nodes clockwise (skipping vnodes of the same machine — an easy bug to introduce).\n\n## Interview framing\n\nLead with the mod-N failure (\"adding one node remaps (N-1)/N of all keys\"), then the ring, then immediately volunteer vnodes — interviewers wait to see if you know single-point rings are unbalanced. Close with the hot-key caveat: consistent hashing solves *placement*, not *load skew*.\n\n## Key takeaways\n\n- mod-N remaps almost everything on membership change; the ring remaps only K/N keys.\n- Virtual nodes fix load variance and scatter rebalancing across the cluster.\n- Replication must skip vnodes of the same physical machine.\n- Consistent hashing balances placement, not load — hot keys need separate treatment.",
+  "resources": [],
+  "key_takeaways": [
+    "hash(key) mod N remaps nearly all keys when N changes; a hash ring remaps only K/N.",
+    "Virtual nodes shrink load variance and spread a departed node's range across many successors.",
+    "Vnode count trades distribution smoothness against routing-table size and range fragmentation.",
+    "Replica placement must skip vnodes belonging to the same physical node.",
+    "Consistent hashing solves placement, not load skew — celebrity keys still create hot partitions."
+  ],
+  "questions": [
+    {
+      "prompt": "A node leaves a consistent-hash ring that has NO virtual nodes. What happens to its keys?",
+      "kind": "mcq",
+      "choices": [
+        "They are redistributed evenly across all remaining nodes",
+        "They all move to the single clockwise successor, doubling its load",
+        "They are lost until the node returns",
+        "Half go to the predecessor and half to the successor"
+      ],
+      "correct_answer": "They all move to the single clockwise successor, doubling its load",
+      "explanation": "Without vnodes, one node owns one contiguous arc, and the whole arc transfers to its successor — the rebalancing hotspot that virtual nodes exist to fix."
+    },
+    {
+      "prompt": "Why does consistent hashing NOT solve the hot partition (celebrity key) problem?",
+      "kind": "mcq",
+      "choices": [
+        "Because it balances where keys live, not how much traffic each key receives",
+        "Because hot keys hash to multiple nodes simultaneously",
+        "Because virtual nodes concentrate hot keys",
+        "It does solve it, by spreading requests across replicas"
+      ],
+      "correct_answer": "Because it balances where keys live, not how much traffic each key receives",
+      "explanation": "Placement uniformity and load uniformity are different problems: one key with 100k req/s still lands on one owner. Salting, caching, or key splitting address load skew."
+    },
+    {
+      "prompt": "Your cluster replicates each key to 3 nodes by walking clockwise from the key's position and taking the next 3 vnodes. What bug does this have and how do you fix it?",
+      "kind": "free",
+      "choices": null,
+      "correct_answer": "Consecutive vnodes can belong to the same physical machine, so the three 'replicas' may land on fewer than three physical nodes, silently reducing fault tolerance. Fix: walk clockwise taking vnodes but skip any whose physical node (or rack/zone for stronger placement) is already in the replica set, until you have 3 distinct machines.",
+      "explanation": "The distinct-physical-node (and ideally distinct-rack) constraint is the classic vnode replication gotcha from the Dynamo lineage."
+    }
+  ]
+}

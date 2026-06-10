@@ -1,0 +1,125 @@
+import { invoke } from '@tauri-apps/api/core';
+import { listen, type UnlistenFn } from '@tauri-apps/api/event';
+
+export interface SessionView {
+  date: string;
+  status: 'pending' | 'in_progress' | 'completed' | 'skipped';
+  step: 'quiz' | 'review' | 'roulette' | 'course' | 'done';
+  quiz_score: number | null;
+  streak: number;
+  locked: boolean;
+}
+
+export interface AppStateView {
+  onboarded: boolean;
+  session: SessionView;
+  owed: boolean;
+  schedule_hour: number;
+  schedule_minute: number;
+  debug_day: boolean;
+}
+
+export interface QuizQuestionView {
+  id: number;
+  prompt: string;
+  kind: 'mcq' | 'free';
+  choices: string[] | null;
+  origin: 'fresh' | 'carryover';
+  answered: boolean;
+  draft: string | null;
+}
+
+export interface ReviewItem {
+  question_id: number;
+  prompt: string;
+  kind: string;
+  user_answer: string;
+  correct: boolean | null;
+  feedback: string;
+  correct_answer: string;
+  explanation: string;
+  returns_tomorrow: boolean;
+}
+
+export interface ReviewData {
+  items: ReviewItem[];
+  score: number;
+  self_assess: boolean;
+}
+
+export interface RouletteView {
+  pool: string[];
+  chosen_index: number;
+  concept_title: string;
+  concept_category: string;
+}
+
+export interface Resource {
+  title: string;
+  url: string;
+  type?: string;
+  why?: string;
+}
+
+export interface CourseView {
+  title: string;
+  markdown: string;
+  resources: Resource[];
+  source: string;
+  remaining_seconds: number;
+  total_seconds: number;
+}
+
+export interface HistoryEntry {
+  date: string;
+  status: string;
+  quiz_score: number | null;
+  concept_title: string | null;
+}
+
+export interface DashboardView {
+  history: HistoryEntry[];
+  streak: number;
+  carryover_due: number;
+  concepts_total: number;
+  concepts_covered: number;
+}
+
+export interface ArchivedCourse {
+  session_date: string;
+  title: string;
+  markdown: string;
+  resources: Resource[];
+}
+
+export const api = {
+  getAppState: () => invoke<AppStateView>('get_app_state'),
+  checkAgent: () => invoke<boolean>('check_agent'),
+  completeSetup: (hour: number, minute: number, escapePhrase: string) =>
+    invoke<AppStateView>('complete_setup', {
+      input: { hour, minute, escape_phrase: escapePhrase },
+    }),
+  updateSchedule: (hour: number, minute: number) =>
+    invoke<void>('update_schedule', { hour, minute }),
+  startSession: () => invoke<SessionView>('start_session'),
+  getQuiz: () => invoke<QuizQuestionView[]>('get_quiz'),
+  submitAnswer: (questionId: number, answer: string) =>
+    invoke<void>('submit_answer', { questionId, answer }),
+  finishQuiz: () => invoke<ReviewData>('finish_quiz'),
+  getReview: () => invoke<ReviewData>('get_review'),
+  finishReview: () => invoke<SessionView>('finish_review'),
+  getRoulette: () => invoke<RouletteView>('get_roulette'),
+  ensureCourse: () => invoke<CourseView>('ensure_course'),
+  startCourse: () => invoke<SessionView>('start_course'),
+  finishCourse: () => invoke<SessionView>('finish_course'),
+  escapeSession: (phrase: string) => invoke<boolean>('escape_session', { phrase }),
+  getEscapePhrase: () => invoke<string>('get_escape_phrase'),
+  getDashboard: () => invoke<DashboardView>('get_dashboard'),
+  getPastCourse: (date: string) =>
+    invoke<ArchivedCourse | null>('get_past_course', { date }),
+  openResources: () => invoke<number>('open_resources'),
+};
+
+export function onEvent<T>(name: string, handler: (payload: T) => void): Promise<UnlistenFn> {
+  return listen<T>(name, (e) => handler(e.payload));
+}

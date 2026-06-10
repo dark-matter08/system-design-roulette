@@ -1,0 +1,230 @@
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap');
+
+:root,
+.theme-noir {
+  --bg: #141118;
+  --surface: #221d29;
+  --surface-2: #2b2434;
+  --border: #3a3344;
+  --fg: #f2ede4;
+  --muted: #a89f92;
+  --faint: #5e5750;
+  --accent: #ef9f27;
+  --accent-fg: #412402;
+  --ok-fg: #9fe1cb;
+  --ok-bg: #04342c;
+  --bad-fg: #f7c1c1;
+  --bad-bg: #501313;
+  --warn-fg: #fac775;
+  --warn-bg: #412402;
+  --font-body: 'Inter', -apple-system, sans-serif;
+  --font-display: 'Fraunces', Georgia, serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+  --cta-radius: 999px;
+}
+
+.theme-scholar {
+  --bg: #fbf8f1;
+  --surface: #f1efe8;
+  --surface-2: #e9e6dc;
+  --border: #d3d1c7;
+  --fg: #2c2c2a;
+  --muted: #5f5e5a;
+  --faint: #b4b2a9;
+  --accent: #534ab7;
+  --accent-fg: #eeedfe;
+  --ok-fg: #085041;
+  --ok-bg: #e1f5ee;
+  --bad-fg: #791f1f;
+  --bad-bg: #fcebeb;
+  --warn-fg: #633806;
+  --warn-bg: #faeeda;
+  --cta-radius: 10px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+}
+
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-body);
+  font-size: 15px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  user-select: none;
+  overflow: hidden;
+  transition: background 0.5s ease, color 0.5s ease;
+}
+
+#app-root {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  transition: background 0.5s ease;
+}
+
+h1,
+h2,
+h3 {
+  font-family: var(--font-display);
+  font-weight: 500;
+  line-height: 1.25;
+  margin: 0;
+}
+
+button.cta {
+  background: var(--accent);
+  color: var(--accent-fg);
+  border: none;
+  border-radius: var(--cta-radius);
+  font-family: var(--font-body);
+  font-size: 15px;
+  font-weight: 600;
+  padding: 12px 28px;
+  cursor: pointer;
+  transition: transform 0.1s ease, opacity 0.2s ease;
+}
+button.cta:hover:not(:disabled) {
+  transform: translateY(-1px);
+}
+button.cta:active:not(:disabled) {
+  transform: scale(0.98);
+}
+button.cta:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+button.ghost {
+  background: transparent;
+  color: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: var(--cta-radius);
+  font-family: var(--font-body);
+  font-size: 13px;
+  padding: 8px 18px;
+  cursor: pointer;
+}
+button.ghost:hover {
+  color: var(--fg);
+  border-color: var(--muted);
+}
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  padding: 6px 14px;
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--muted);
+  border: 1px solid var(--border);
+}
+
+.badge {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  padding: 3px 10px;
+  border-radius: 999px;
+}
+.badge.ok {
+  color: var(--ok-fg);
+  background: var(--ok-bg);
+}
+.badge.bad {
+  color: var(--bad-fg);
+  background: var(--bad-bg);
+}
+.badge.warn {
+  color: var(--warn-fg);
+  background: var(--warn-bg);
+}
+
+input[type='text'],
+input[type='time'],
+textarea {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--fg);
+  border-radius: 10px;
+  padding: 11px 14px;
+  font-family: var(--font-body);
+  font-size: 14px;
+  width: 100%;
+  outline: none;
+  user-select: text;
+}
+input:focus,
+textarea:focus {
+  border-color: var(--accent);
+}
+
+.screen {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 48px;
+  overflow-y: auto;
+  animation: fade-in 0.35s ease;
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.kicker {
+  font-size: 11px;
+  letter-spacing: 3px;
+  text-transform: uppercase;
+  color: var(--faint);
+  font-family: var(--font-body);
+  font-weight: 600;
+}
+
+.progress-track {
+  height: 5px;
+  background: var(--surface);
+  width: 100%;
+}
+.progress-fill {
+  height: 100%;
+  background: var(--accent);
+  transition: width 0.4s ease;
+}
+
+.mono {
+  font-family: var(--font-mono);
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 5px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}

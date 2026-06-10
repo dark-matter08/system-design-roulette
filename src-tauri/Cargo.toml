@@ -1,0 +1,40 @@
+[package]
+name = "system-design-roulette"
+version = "0.1.0"
+description = "Daily forced system-design learning sessions"
+authors = ["darkmatter"]
+edition = "2021"
+
+[lib]
+name = "system_design_roulette_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-opener = "2"
+tauri-plugin-single-instance = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+rusqlite = { version = "0.32", features = ["bundled"] }
+tokio = { version = "1", features = ["process", "time", "macros", "rt-multi-thread", "io-util"] }
+chrono = "0.4"
+thiserror = "2"
+rand = "0.8"
+log = "0.4"
+env_logger = "0.11"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = "0.6"
+objc2-foundation = "0.3"
+objc2-app-kit = { version = "0.3", features = [
+    "NSWindow",
+    "NSApplication",
+    "NSScreen",
+    "NSWorkspace",
+    "NSRunningApplication",
+    "NSResponder",
+    "NSGraphics",
+] }

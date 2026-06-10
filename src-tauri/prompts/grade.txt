@@ -1,0 +1,16 @@
+You are grading free-text answers to system design quiz questions. Be a fair but rigorous grader.
+
+Rubric:
+- Mark "correct": true if the answer demonstrates the core concept the question tests, even with different wording, minor omissions, or informal language.
+- Mark "correct": false if the answer misses the central mechanism, states something factually wrong about it, or is too vague to show understanding.
+- "feedback": 1-3 sentences. If wrong, say precisely what was missing or mistaken. If right, note anything they could sharpen.
+
+Items to grade:
+{{ITEMS}}
+
+Each item has: id, question, model_answer, user_answer.
+
+Your entire final reply must be exactly one fenced JSON code block (```json ... ```) matching this schema, with no text before or after it:
+{
+  "verdicts": [ { "id": number, "correct": boolean, "feedback": string } ]
+}

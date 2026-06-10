@@ -1,0 +1,41 @@
+{
+  "slug": "rate-limiting",
+  "title": "Rate limiting algorithms",
+  "markdown": "## Why this matters\n\nEvery public-facing system eventually meets a client that misbehaves — a buggy retry loop, a scraper, or an attacker. Rate limiting is the mechanism that converts \"one bad client takes down the service\" into \"one bad client gets 429s.\" It also shows up constantly in interviews because it touches state, distribution, and accuracy trade-offs in a small package.\n\n## Core mechanics\n\n### Token bucket\nA bucket holds up to `B` tokens, refilled at `r` tokens/second. Each request consumes one token; an empty bucket means reject (or queue). Token bucket allows bursts up to `B` while enforcing a long-term rate of `r`. Implementation is two numbers per key — `tokens` and `last_refill` — updated lazily on each request:\n\n```\ntokens = min(B, tokens + (now - last_refill) * r)\nif tokens >= 1: tokens -= 1; allow\nelse: reject\n```\n\n### Leaky bucket\nRequests enter a FIFO queue drained at a constant rate. Output traffic is perfectly smooth, but bursts pay latency (they wait in the queue) instead of being served immediately. Used where downstream must see a constant rate (e.g., feeding a fragile legacy system).\n\n### Fixed window counter\nCount requests per key per window (e.g., per minute); reject above the limit. Cheap, but suffers the boundary problem: a client can send the full limit at 0:59 and again at 1:01 — double the intended rate across the boundary.\n\n### Sliding window log\nStore a timestamp per request; count timestamps in the trailing window. Exact, but O(limit) memory per key — expensive at scale.\n\n### Sliding window counter\nThe practical compromise: weight the previous window's count by its overlap with the trailing window: `est = curr + prev * overlap_fraction`. Near-exact with O(1) memory.\n\n### Distributed enforcement\nA single Redis instance with an atomic Lua script is the standard centralized design: accurate, simple, but adds a network hop and a single point of failure. Local in-process limiters per node are fast but enforce `limit × N` globally. Common production pattern: local limiter for cheap first-pass + async-synced global budget, accepting small overshoot in exchange for availability — rate limiters should fail open for most products.\n\n## Trade-offs and failure modes\n\n- Accuracy vs cost: sliding log is exact and expensive; fixed window is cheap and gameable; sliding counter is the usual sweet spot.\n- Fail open vs fail closed: if Redis is down, do you let traffic through (availability) or block it (protection)? Decide per endpoint — login should fail closed, feed reads fail open.\n- Hot keys: a single popular API key hammers one Redis shard. Mitigate by sharding the counter and summing, accepting approximation.\n- Retry amplification: returning 429 without `Retry-After` teaches clients to hammer. Always return `Retry-After` and document jittered backoff.\n\n## Real-world example\n\nStripe rate limits with token buckets in Redis, with separate limiters for different concerns: a request rate limiter, a concurrency limiter, and load shedders that prioritize critical traffic when the fleet is degraded. The insight worth stealing: rate limiting is not one limiter — it's layers with different blast radii.\n\n## Interview framing\n\nState the algorithm menu quickly, pick token bucket or sliding window counter, then spend your time on the distributed question: where does the counter live, what happens when it's unavailable, and how clients should react (429 + Retry-After + jittered backoff). Mention per-user vs per-IP vs global keys and that the limiter itself must be cheaper than the work it protects.\n\n## Key takeaways\n\n- Token bucket = sustained rate + bounded burst with O(1) state; it is the default answer.\n- Fixed windows are gameable at boundaries; sliding window counter fixes this at O(1) cost.\n- The hard part is distribution: centralized-accurate vs local-fast, and fail-open vs fail-closed.\n- Always return Retry-After; a limiter without client guidance creates retry storms.",
+  "resources": [],
+  "key_takeaways": [
+    "Token bucket gives sustained rate plus bounded burst with two numbers of state per key.",
+    "Fixed window counters allow 2x rate at window boundaries; sliding window counters fix this cheaply.",
+    "Distributed limiting trades accuracy (central Redis) against availability (local limiters).",
+    "Decide fail-open vs fail-closed per endpoint, not globally.",
+    "Return Retry-After or you convert rejected traffic into retry storms."
+  ],
+  "questions": [
+    {
+      "prompt": "A client sends its full per-minute limit at 0:59 and again at 1:01, getting double throughput. Which algorithm has this flaw?",
+      "kind": "mcq",
+      "choices": ["Token bucket", "Fixed window counter", "Sliding window log", "Leaky bucket"],
+      "correct_answer": "Fixed window counter",
+      "explanation": "Fixed windows reset the count at the boundary, so back-to-back bursts on either side of it both pass. Sliding window approaches exist precisely to fix this."
+    },
+    {
+      "prompt": "Why does a token bucket allow bursts while a leaky bucket does not?",
+      "kind": "mcq",
+      "choices": [
+        "Token bucket stores accumulated capacity that a burst can spend at once; leaky bucket drains at a constant rate so bursts queue",
+        "Token bucket has no upper bound on tokens",
+        "Leaky bucket rejects all bursts outright",
+        "They behave identically; the names are historical"
+      ],
+      "correct_answer": "Token bucket stores accumulated capacity that a burst can spend at once; leaky bucket drains at a constant rate so bursts queue",
+      "explanation": "Idle time fills the token bucket up to B tokens, which a burst can spend immediately. The leaky bucket's constant drain rate smooths output, making bursts wait."
+    },
+    {
+      "prompt": "Your Redis-backed global rate limiter becomes unreachable. What should the API do, and why might the answer differ between the login endpoint and the feed endpoint?",
+      "kind": "free",
+      "choices": null,
+      "correct_answer": "Most endpoints should fail open (allow traffic) because the limiter protects capacity and availability matters more than perfect limiting. Login should fail closed or fall back to a strict local limiter because rate limiting there is a security control against credential stuffing, and failing open removes that protection.",
+      "explanation": "The decision hinges on what the limiter protects: capacity (fail open) versus abuse/security (fail closed). Stating a single global answer misses the point."
+    }
+  ]
+}
