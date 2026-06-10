@@ -94,11 +94,22 @@ pub fn run() {
                 .ok()
                 .or_else(|| db::get_config(&conn, "model").ok().flatten())
                 .unwrap_or_else(|| "opus".to_string());
+            // Live agent-activity feed: generator -> broadcast -> gen:log events.
+            let (log_tx, mut log_rx) = tokio::sync::broadcast::channel::<String>(64);
+            {
+                let handle = app.handle().clone();
+                tauri::async_runtime::spawn(async move {
+                    while let Ok(line) = log_rx.recv().await {
+                        let _ = handle.emit("gen:log", line);
+                    }
+                });
+            }
             let generator = generator::Generator::new(
                 resolve_claude_bin(),
                 codex_bin,
                 data_dir.join("scratch"),
                 model,
+                Some(log_tx),
             );
             app.manage(AppState {
                 db: db::Db(Mutex::new(conn)),

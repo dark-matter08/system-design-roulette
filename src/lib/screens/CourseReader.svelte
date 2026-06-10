@@ -3,6 +3,7 @@
   import { app } from '../stores.svelte';
   import Markdown from '../components/Markdown.svelte';
   import AudioPlayer from '../components/AudioPlayer.svelte';
+  import AgentLog from '../components/AgentLog.svelte';
 
   let course = $state<CourseView | null>(null);
 
@@ -155,7 +156,10 @@
 
 <div class="reader theme-scholar">
   {#if !course}
-    <div class="screen"><p>Loading course…</p></div>
+    <div class="screen gen-wait">
+      <p>Loading course…</p>
+      <AgentLog />
+    </div>
   {:else}
     <header class="reader-head">
       <div class="title-row">
@@ -283,6 +287,9 @@
     color: var(--fg);
     min-height: 0;
     animation: fade-in 0.5s ease;
+  }
+  .gen-wait {
+    gap: 16px;
   }
   .reader-head {
     border-bottom: 1px solid var(--border);

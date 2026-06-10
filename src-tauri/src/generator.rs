@@ -114,6 +114,8 @@ pub struct Generator {
     /// Primary model for course generation (the expensive, quality-bound call).
     /// Quiz and grading stay on sonnet: rubric-bound, latency-sensitive.
     pub model: String,
+    /// Live agent-activity lines for the UI (gen:log). None in tests.
+    pub log_tx: Option<tokio::sync::broadcast::Sender<String>>,
 }
 
 pub const COURSE_PROMPT: &str = include_str!("../prompts/course.txt");
@@ -155,9 +157,21 @@ pub struct FallbackCourse {
 }
 
 impl Generator {
-    pub fn new(claude_bin: String, codex_bin: Option<String>, scratch_dir: PathBuf, model: String) -> Self {
+    pub fn new(
+        claude_bin: String,
+        codex_bin: Option<String>,
+        scratch_dir: PathBuf,
+        model: String,
+        log_tx: Option<tokio::sync::broadcast::Sender<String>>,
+    ) -> Self {
         let _ = std::fs::create_dir_all(&scratch_dir);
-        Self { claude_bin, codex_bin, scratch_dir, model }
+        Self { claude_bin, codex_bin, scratch_dir, model, log_tx }
+    }
+
+    fn log(&self, msg: impl Into<String>) {
+        if let Some(tx) = &self.log_tx {
+            let _ = tx.send(msg.into());
+        }
     }
 
     pub async fn generate_course(
@@ -335,12 +349,12 @@ impl Generator {
         Err(last_err.unwrap_or(GenError::NoBinary))
     }
 
-    async fn run_claude(&self, prompt: &str, web_tools: bool, timeout: Duration, model: &str) -> Result<String> {
+    fn claude_cmd(&self, prompt: &str, web_tools: bool, model: &str, stream: bool) -> Command {
         let mut cmd = Command::new(&self.claude_bin);
         cmd.arg("-p")
             .arg(prompt)
             .arg("--output-format")
-            .arg("json")
+            .arg(if stream { "stream-json" } else { "json" })
             .arg("--model")
             .arg(model)
             .arg("--max-turns")
@@ -349,10 +363,30 @@ impl Generator {
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
+        if stream {
+            // print-mode stream-json requires --verbose
+            cmd.arg("--verbose");
+        }
         if web_tools {
             cmd.arg("--allowedTools").arg("WebSearch,WebFetch");
         }
         cmd.arg("--disallowedTools").arg("Bash,Edit,Write,NotebookEdit");
+        cmd
+    }
+
+    async fn run_claude(&self, prompt: &str, web_tools: bool, timeout: Duration, model: &str) -> Result<String> {
+        // Long calls (course, audio script) stream so the UI can show the
+        // agent working; short rubric calls stay on the simple JSON envelope.
+        if timeout >= Duration::from_secs(240) && self.log_tx.is_some() {
+            match self.run_claude_stream(prompt, web_tools, timeout, model).await {
+                Ok(out) => return Ok(out),
+                Err(e) => {
+                    // e.g. an older CLI without stream-json — degrade silently.
+                    log::warn!("streaming run failed ({e}), retrying buffered");
+                }
+            }
+        }
+        let cmd = self.claude_cmd(prompt, web_tools, model, false);
         let raw = run_capture(cmd, timeout).await?;
         // claude --output-format json wraps the reply in {"result": "..."} among other fields
         if let Ok(envelope) = serde_json::from_str::<serde_json::Value>(&raw) {
@@ -361,6 +395,88 @@ impl Generator {
             }
         }
         Ok(raw)
+    }
+
+    /// stream-json variant: emits a gen:log line per agent event (web search
+    /// queries, fetches, drafting turns) and returns the final result text.
+    async fn run_claude_stream(
+        &self,
+        prompt: &str,
+        web_tools: bool,
+        timeout: Duration,
+        model: &str,
+    ) -> Result<String> {
+        use tokio::io::{AsyncBufReadExt, BufReader};
+        self.log(format!("⇢ spawning agent · model {model}"));
+        let mut child = self
+            .claude_cmd(prompt, web_tools, model, true)
+            .spawn()
+            .map_err(|e| if e.kind() == std::io::ErrorKind::NotFound { GenError::NoBinary } else { GenError::Io(e) })?;
+        let stdout = child.stdout.take().expect("piped stdout");
+        let mut stderr = child.stderr.take().expect("piped stderr");
+        // Drain stderr concurrently so the child can't block on a full pipe.
+        let err_task = tokio::spawn(async move {
+            let mut buf = String::new();
+            let _ = stderr.read_to_string(&mut buf).await;
+            buf
+        });
+
+        let me = self.clone();
+        let read_fut = async move {
+            let mut lines = BufReader::new(stdout).lines();
+            let mut result: Option<String> = None;
+            let mut drafted = 0usize;
+            while let Ok(Some(line)) = lines.next_line().await {
+                let Ok(v) = serde_json::from_str::<serde_json::Value>(&line) else { continue };
+                match v.get("type").and_then(|t| t.as_str()) {
+                    Some("assistant") => {
+                        for block in v["message"]["content"].as_array().unwrap_or(&vec![]) {
+                            match block.get("type").and_then(|t| t.as_str()) {
+                                Some("tool_use") => {
+                                    let name = block["name"].as_str().unwrap_or("tool");
+                                    let detail = block["input"]["query"]
+                                        .as_str()
+                                        .or_else(|| block["input"]["url"].as_str())
+                                        .unwrap_or("");
+                                    me.log(format!("⚒ {name}: {}", detail.chars().take(80).collect::<String>()));
+                                }
+                                Some("text") => {
+                                    let n = block["text"].as_str().map(|t| t.len()).unwrap_or(0);
+                                    drafted += n;
+                                    if n > 200 {
+                                        me.log(format!("✍ drafting… {} chars written", drafted));
+                                    }
+                                }
+                                _ => {}
+                            }
+                        }
+                    }
+                    Some("result") => {
+                        result = v["result"].as_str().map(|s| s.to_string());
+                    }
+                    _ => {}
+                }
+            }
+            let status = child.wait().await?;
+            Ok::<(Option<String>, std::process::ExitStatus), std::io::Error>((result, status))
+        };
+
+        match tokio::time::timeout(timeout, read_fut).await {
+            Ok(Ok((Some(result), status))) if status.success() => {
+                self.log(format!("✓ agent returned {} chars", result.len()));
+                Ok(result)
+            }
+            Ok(Ok((_, status))) => {
+                let err = err_task.await.unwrap_or_default();
+                self.log("✗ agent exited without a result".to_string());
+                Err(GenError::BadExit(status.code().unwrap_or(-1), err.chars().take(2000).collect()))
+            }
+            Ok(Err(e)) => Err(GenError::Io(e)),
+            Err(_) => {
+                self.log(format!("✗ agent timed out after {}s", timeout.as_secs()));
+                Err(GenError::Timeout(timeout))
+            }
+        }
     }
 
     async fn run_codex(&self, codex_bin: &str, prompt: &str, timeout: Duration) -> Result<String> {

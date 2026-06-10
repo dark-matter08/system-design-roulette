@@ -15,6 +15,7 @@ class AppStore {
   state = $state<AppStateView | null>(null);
   screen = $state<Screen>('loading');
   genStatus = $state<string>('');
+  genLog = $state<string[]>([]);
   timerRemaining = $state<number>(-1);
   error = $state<string>('');
   /** User stepped away from an UNLOCKED in-progress session (early start /
@@ -90,6 +91,10 @@ class AppStore {
     await onEvent('session:state', () => this.refresh());
     await onEvent<string>('gen:status', (msg) => {
       this.genStatus = msg;
+    });
+    await onEvent<string>('gen:log', (line) => {
+      const ts = new Date().toTimeString().slice(0, 8);
+      this.genLog = [...this.genLog.slice(-49), `${ts}  ${line}`];
     });
     await onEvent<number>('timer:tick', (remaining) => {
       this.timerRemaining = remaining;

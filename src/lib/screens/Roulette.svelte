@@ -5,6 +5,7 @@
   import ClusterBar from '../components/ClusterBar.svelte';
   import StatusLED from '../components/StatusLED.svelte';
   import MetaBadge from '../components/MetaBadge.svelte';
+  import AgentLog from '../components/AgentLog.svelte';
 
   let data = $state<RouletteView | null>(null);
   let wheel = $state<ReturnType<typeof ShardRouter>>();
@@ -70,6 +71,7 @@
         <h1 class="topic">{data.concept_title}</h1>
         <div class="gen">
           <StatusLED tone="pending" label={app.genStatus || 'shard: generating'} />
+          <AgentLog />
           <p class="fine mono">
             first generation researches real resources via your agent — can take a few minutes
           </p>

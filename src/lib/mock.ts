@@ -255,14 +255,30 @@ export const mockApi = {
     pool_unlocked: 31,
     pool_total: 72,
   }),
-  ensureCourse: async (): Promise<CourseView> => ({
-    title: 'Consistent hashing and virtual nodes',
-    markdown: COURSE_MD,
-    resources: RESOURCES,
-    source: 'claude',
-    remaining_seconds: state.remaining,
-    total_seconds: 30 * 60,
-  }),
+  ensureCourse: async (): Promise<CourseView> => {
+    // Demo the live agent log the way a real generation streams it.
+    const feed = [
+      '⇢ spawning agent · model opus',
+      '⚒ WebSearch: consistent hashing virtual nodes production',
+      '⚒ WebFetch: https://blog.discord.com/scaling-elixir',
+      '⚒ WebSearch: jump hash vs ring hash benchmark',
+      '✍ drafting… 2,400 chars written',
+      '✍ drafting… 9,100 chars written',
+      '✓ agent returned 21,348 chars',
+    ];
+    for (const line of feed) {
+      mockEmit('gen:log', line);
+      await new Promise((r) => setTimeout(r, 350));
+    }
+    return {
+      title: 'Consistent hashing and virtual nodes',
+      markdown: COURSE_MD,
+      resources: RESOURCES,
+      source: 'claude',
+      remaining_seconds: state.remaining,
+      total_seconds: 30 * 60,
+    };
+  },
   startCourse: async () => {
     state.step = 'course';
     state.remaining = 27 * 60 + 14;
