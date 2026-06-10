@@ -92,7 +92,10 @@ export interface ArchivedCourse {
   resources: Resource[];
 }
 
-export const api = {
+export const isTauri =
+  typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
+
+const realApi = {
   getAppState: () => invoke<AppStateView>('get_app_state'),
   checkAgent: () => invoke<boolean>('check_agent'),
   completeSetup: (hour: number, minute: number, escapePhrase: string) =>
@@ -120,6 +123,14 @@ export const api = {
   openResources: () => invoke<number>('open_resources'),
 };
 
+/** Demo mode: outside Tauri (plain `vite dev`), serve canned data from mock.ts. */
+import { mockApi, mockListen } from './mock';
+
+export const api: typeof realApi = isTauri ? realApi : (mockApi as unknown as typeof realApi);
+
 export function onEvent<T>(name: string, handler: (payload: T) => void): Promise<UnlistenFn> {
+  if (!isTauri) {
+    return Promise.resolve(mockListen(name, (p) => handler(p as T)));
+  }
   return listen<T>(name, (e) => handler(e.payload));
 }
