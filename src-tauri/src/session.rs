@@ -155,6 +155,10 @@ pub fn complete_session(app: &AppHandle, state: &AppState) -> db::Result<Session
         s.current_step = STEP_DONE.into();
         s.completed_at = Some(now_iso());
         db::upsert_session(&conn, &s)?;
+        // Mastery ledger: today's concept has been read (unseen -> introduced).
+        if let Some(cid) = s.concept_id {
+            let _ = crate::mastery::record_course_read(&conn, cid, &today);
+        }
         db::jobs::enqueue(&conn, "course", &tomorrow)?;
         db::jobs::enqueue(&conn, "quiz", &tomorrow)?;
         s
@@ -259,14 +263,17 @@ async fn run_generation_job(
             let Some(course) = course else {
                 return Err(format!("no course for {prev}, cannot build quiz").into());
             };
-            let existing = {
+            let (existing, dossier) = {
                 let conn = state.db.0.lock().unwrap();
-                db::questions_for_course(&conn, course.id)?
+                (
+                    db::questions_for_course(&conn, course.id)?,
+                    crate::mastery::build_dossier(&conn, target_date).unwrap_or_default(),
+                )
             };
             if !existing.is_empty() {
                 return Ok(());
             }
-            let (questions, _src) = state.generator.generate_quiz(&course.markdown).await?;
+            let (questions, _src) = state.generator.generate_quiz(&course.markdown, &dossier).await?;
             let conn = state.db.0.lock().unwrap();
             persist_quiz_questions(&conn, course.id, &questions)?;
             Ok(())
@@ -311,9 +318,13 @@ pub async fn ensure_course_for_date(
             }
         }
     };
+    let dossier = {
+        let conn = state.db.0.lock().unwrap();
+        crate::mastery::build_dossier(&conn, date).unwrap_or_default()
+    };
     let (course, source) = state
         .generator
-        .generate_course(&concept.title, &concept.category)
+        .generate_course(&concept.title, &concept.category, &dossier)
         .await?;
     let resources_json = serde_json::to_string(&course.resources)?;
     let course_row = {

@@ -20,6 +20,16 @@
     return s == null ? '—' : Math.round(s * 100) + '%';
   }
 
+  /** Mastery entries grouped by category, preserving backend order. */
+  const masteryByCategory = $derived.by(() => {
+    const groups = new Map<string, NonNullable<typeof data>['mastery']>();
+    for (const e of data?.mastery ?? []) {
+      if (!groups.has(e.category)) groups.set(e.category, []);
+      groups.get(e.category)!.push(e);
+    }
+    return [...groups.entries()];
+  });
+
   /** Last 16 weeks as columns of 7 days, GitHub-style. */
   const heatmap = $derived.by(() => {
     const byDate = new Map((data?.history ?? []).map((h) => [h.date, h.status]));
@@ -70,6 +80,31 @@
           <NodeCard name="dead-letter-queue" badge="retries due" badgeTone="amber">
             {#snippet children()}<div class="num mono">{data?.carryover_due ?? 0}</div>{/snippet}
           </NodeCard>
+        </div>
+        <div class="hm-block">
+          <div class="meta-label">MASTERY_STORE — per-concept ledger</div>
+          <div class="ms-grid">
+            {#each masteryByCategory as [category, entries]}
+              <div class="ms-row">
+                <span class="ms-cat mono">{category}</span>
+                <div class="ms-cells">
+                  {#each entries as e}
+                    <div
+                      class="ms-cell ms-{e.state}"
+                      title="{e.title} — {e.state}{e.state !== 'unseen' ? ` (${Math.round(e.score_ema * 100)}%)` : ''}"
+                    ></div>
+                  {/each}
+                </div>
+              </div>
+            {/each}
+          </div>
+          <div class="ms-legend mono">
+            <span><i class="ms-cell ms-mastered"></i> mastered</span>
+            <span><i class="ms-cell ms-practicing"></i> practicing</span>
+            <span><i class="ms-cell ms-introduced"></i> introduced</span>
+            <span><i class="ms-cell ms-struggling"></i> struggling</span>
+            <span><i class="ms-cell ms-unseen"></i> unseen</span>
+          </div>
         </div>
         <div class="hm-block">
           <div class="meta-label">SESSION_LOG — last 16 weeks</div>
@@ -194,6 +229,65 @@
     background: var(--bad-bg);
     border: 1px solid var(--bad-fg);
     box-sizing: border-box;
+  }
+  .ms-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .ms-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .ms-cat {
+    width: 110px;
+    font-size: 10px;
+    color: var(--faint);
+    text-align: right;
+    flex-shrink: 0;
+  }
+  .ms-cells {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 3px;
+  }
+  .ms-cell {
+    width: 13px;
+    height: 13px;
+    border-radius: 3px;
+    background: var(--surface);
+    display: inline-block;
+  }
+  .ms-cell.ms-introduced {
+    background: var(--violet-bg);
+  }
+  .ms-cell.ms-practicing {
+    background: var(--warn-bg);
+    border: 1px solid var(--led-warn);
+    box-sizing: border-box;
+  }
+  .ms-cell.ms-struggling,
+  .ms-cell.ms-decayed {
+    background: var(--bad-bg);
+    border: 1px solid var(--led-err);
+    box-sizing: border-box;
+  }
+  .ms-cell.ms-mastered,
+  .ms-cell.ms-maintenance {
+    background: var(--led-ok);
+  }
+  .ms-legend {
+    display: flex;
+    gap: 16px;
+    font-size: 10px;
+    color: var(--faint);
+    align-items: center;
+  }
+  .ms-legend span {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
   }
   .dash-body {
     flex: 1;

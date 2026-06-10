@@ -77,12 +77,29 @@ export interface HistoryEntry {
   concept_title: string | null;
 }
 
+export interface MasteryEntry {
+  concept_id: number;
+  slug: string;
+  title: string;
+  category: string;
+  state:
+    | 'unseen'
+    | 'introduced'
+    | 'practicing'
+    | 'struggling'
+    | 'mastered'
+    | 'maintenance'
+    | 'decayed';
+  score_ema: number;
+}
+
 export interface DashboardView {
   history: HistoryEntry[];
   streak: number;
   carryover_due: number;
   concepts_total: number;
   concepts_covered: number;
+  mastery: MasteryEntry[];
 }
 
 export interface ArchivedCourse {

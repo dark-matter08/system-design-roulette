@@ -146,3 +146,75 @@ fn json_parser_survives_embedded_code_fences_in_markdown() {
     let c = system_design_roulette_lib::generator::parse_json_payload::<Course>(raw).unwrap();
     assert!(c.markdown.contains("code here"));
 }
+
+#[test]
+fn mastery_lifecycle_transitions() {
+    use system_design_roulette_lib::mastery;
+    let conn = test_db();
+    let concept = db::all_concepts(&conn).unwrap()[0].clone();
+    let id = concept.id;
+
+    // Course read: unseen -> introduced.
+    mastery::record_course_read(&conn, id, "2026-06-01").unwrap();
+    assert_eq!(mastery::get(&conn, id).unwrap().state, "introduced");
+
+    // First quiz, good score: introduced -> practicing (mastery needs 2 spaced encounters).
+    let m = mastery::record_quiz_outcome(&conn, id, "2026-06-02", 1.0).unwrap();
+    assert_eq!(m.state, "practicing");
+
+    // Second strong encounter only 1 day later: gap < 7d, still practicing.
+    let m = mastery::record_quiz_outcome(&conn, id, "2026-06-03", 1.0).unwrap();
+    assert_eq!(m.state, "practicing");
+
+    // Third strong encounter 8 days later: mastered, review scheduled +7d.
+    let m = mastery::record_quiz_outcome(&conn, id, "2026-06-11", 1.0).unwrap();
+    assert_eq!(m.state, "mastered");
+    assert_eq!(m.next_review_date.as_deref(), Some("2026-06-18"));
+
+    // Passed maintenance check: interval advances 7 -> 21.
+    let m = mastery::record_quiz_outcome(&conn, id, "2026-06-18", 1.0).unwrap();
+    assert_eq!(m.state, "maintenance");
+    assert_eq!(m.review_interval_days, 21);
+
+    // Failed maintenance check: decayed.
+    let m = mastery::record_quiz_outcome(&conn, id, "2026-07-09", 0.0).unwrap();
+    assert_eq!(m.state, "decayed");
+
+    // Bad score from a non-mastered state: struggling.
+    let other = db::all_concepts(&conn).unwrap()[1].clone();
+    mastery::record_course_read(&conn, other.id, "2026-06-01").unwrap();
+    let m = mastery::record_quiz_outcome(&conn, other.id, "2026-06-02", 0.2).unwrap();
+    assert_eq!(m.state, "struggling");
+}
+
+#[test]
+fn dossier_reflects_ledger_and_notes() {
+    use system_design_roulette_lib::mastery;
+    let conn = test_db();
+    let concepts = db::all_concepts(&conn).unwrap();
+    let (a, b) = (concepts[0].clone(), concepts[1].clone());
+
+    mastery::record_course_read(&conn, a.id, "2026-06-01").unwrap();
+    mastery::record_quiz_outcome(&conn, a.id, "2026-06-02", 0.3).unwrap();
+    mastery::set_teacher_note(&conn, a.id, "confuses term with index").unwrap();
+    mastery::record_course_read(&conn, b.id, "2026-06-02").unwrap();
+    db::insert_course(&conn, "2026-06-02", b.id, "# C", "[]", "fallback").unwrap();
+
+    let d = mastery::build_dossier(&conn, "2026-06-03").unwrap();
+    assert!(d.contains("STRUGGLING (1)"), "dossier missing struggling section: {d}");
+    assert!(d.contains("confuses term with index"), "dossier missing teacher note: {d}");
+    assert!(d.contains(&format!("{}", b.slug)) || d.contains("INTRODUCED"), "dossier missing introduced: {d}");
+    assert!(d.contains("RECENT COURSES"), "dossier missing recent courses: {d}");
+    // Empty ledger on a fresh db produces a dossier too (day 1) - never errors.
+    let fresh = test_db();
+    let d0 = mastery::build_dossier(&fresh, "2026-06-01").unwrap();
+    assert!(d0.contains("Day 1 of teaching"));
+}
+
+#[test]
+fn teacher_preamble_wraps_dossier() {
+    // with_teacher is private; verify through the public prompt constant contract instead:
+    // TEACHER_PROMPT must carry the dossier placeholder exactly once.
+    let n = system_design_roulette_lib::generator::TEACHER_PROMPT.matches("{{DOSSIER}}").count();
+    assert_eq!(n, 1);
+}

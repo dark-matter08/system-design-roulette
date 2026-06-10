@@ -129,6 +129,21 @@ CREATE TABLE IF NOT EXISTS carryover (
     times_failed INTEGER NOT NULL DEFAULT 1,
     scheduled_for TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS mastery (
+    concept_id INTEGER PRIMARY KEY REFERENCES concepts(id),
+    state TEXT NOT NULL DEFAULT 'unseen'
+        CHECK(state IN ('unseen','introduced','practicing','struggling','mastered','maintenance','decayed')),
+    score_ema REAL NOT NULL DEFAULT 0,
+    encounters INTEGER NOT NULL DEFAULT 0,
+    last_seen_date TEXT,
+    next_review_date TEXT,
+    review_interval_days INTEGER NOT NULL DEFAULT 7,
+    teacher_notes TEXT NOT NULL DEFAULT ''
+);
+CREATE TABLE IF NOT EXISTS profile (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS generation_jobs (
     id INTEGER PRIMARY KEY,
     kind TEXT NOT NULL CHECK(kind IN ('course','quiz')),

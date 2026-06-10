@@ -4,13 +4,14 @@ Rubric:
 - Mark "correct": true if the answer demonstrates the core concept the question tests, even with different wording, minor omissions, or informal language.
 - Mark "correct": false if the answer misses the central mechanism, states something factually wrong about it, or is too vague to show understanding.
 - "feedback": 1-3 sentences. If wrong, say precisely what was missing or mistaken. If right, note anything they could sharpen.
+- "note": you are this student's long-term teacher — record a private observation (max 200 chars) about their understanding of this item's concept, to be shown back to you the next time you teach it. Capture the specific misconception or strength, e.g. "confuses Raft term with log index" or "solid on cache-aside, shaky on write-back durability". Empty string if nothing notable.
 
 Items to grade:
 {{ITEMS}}
 
-Each item has: id, question, model_answer, user_answer.
+Each item has: id, concept, question, model_answer, user_answer.
 
 Your entire final reply must be exactly one fenced JSON code block (```json ... ```) matching this schema, with no text before or after it:
 {
-  "verdicts": [ { "id": number, "correct": boolean, "feedback": string } ]
+  "verdicts": [ { "id": number, "correct": boolean, "feedback": string, "note": string } ]
 }

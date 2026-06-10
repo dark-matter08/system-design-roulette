@@ -302,12 +302,26 @@ export const mockApi = {
         concept_title: topics[i % topics.length],
       });
     }
+    const states = [
+      'mastered', 'maintenance', 'practicing', 'practicing', 'struggling',
+      'introduced', 'decayed', 'unseen', 'unseen', 'unseen',
+    ] as const;
+    const categories = ['fundamentals', 'storage', 'caching', 'messaging', 'resilience', 'architecture'];
+    const mastery = Array.from({ length: 72 }, (_, i) => ({
+      concept_id: i + 1,
+      slug: `concept-${i + 1}`,
+      title: topics[i % topics.length],
+      category: categories[Math.floor(i / 12)],
+      state: states[(i * 7) % states.length],
+      score_ema: ((i * 13) % 100) / 100,
+    }));
     return {
       history,
       streak: 17,
       carryover_due: 2,
       concepts_total: 72,
       concepts_covered: 36,
+      mastery,
     };
   },
   getPastCourse: async (): Promise<ArchivedCourse | null> => ({

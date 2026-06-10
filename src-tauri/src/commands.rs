@@ -207,11 +207,24 @@ pub async fn finish_quiz(app: AppHandle, state: State<'_, AppState>) -> CmdResul
     let yesterday = state.yesterday();
     let tomorrow = state.tomorrow();
 
-    let (questions, pending) = {
+    let (questions, pending, concept_of) = {
         let conn = state.db.0.lock().unwrap();
         let qs = db::quiz_for_date(&conn, &today, &yesterday).map_err(err)?;
         let pending = pending_answers(&conn, &today);
-        (qs, pending)
+        // question_id -> (concept_id, concept_title), for grading context + mastery.
+        let mut stmt = conn
+            .prepare(
+                "SELECT q.id, c.id, c.title FROM questions q
+                 JOIN courses co ON co.id = q.course_id
+                 JOIN concepts c ON c.id = co.concept_id",
+            )
+            .map_err(err)?;
+        let concept_of: HashMap<i64, (i64, String)> = stmt
+            .query_map([], |r| Ok((r.get::<_, i64>(0)?, (r.get::<_, i64>(1)?, r.get::<_, String>(2)?))))
+            .map_err(err)?
+            .filter_map(|r| r.ok())
+            .collect();
+        (qs, pending, concept_of)
     };
 
     // Grade free-text via agent in one batch.
@@ -220,6 +233,7 @@ pub async fn finish_quiz(app: AppHandle, state: State<'_, AppState>) -> CmdResul
         .filter(|q| q.kind == "free")
         .map(|q| GradeItem {
             id: q.id,
+            concept: concept_of.get(&q.id).map(|(_, t)| t.clone()).unwrap_or_default(),
             question: q.prompt.clone(),
             model_answer: q.correct_answer.clone(),
             user_answer: pending.get(&q.id).cloned().unwrap_or_default(),
@@ -227,15 +241,17 @@ pub async fn finish_quiz(app: AppHandle, state: State<'_, AppState>) -> CmdResul
         .collect();
     let verdicts = state.generator.grade(&free_items).await;
     let self_assess = verdicts.is_none();
-    let verdict_map: HashMap<i64, (bool, String)> = verdicts
+    let verdict_map: HashMap<i64, (bool, String, String)> = verdicts
         .unwrap_or_default()
         .into_iter()
-        .map(|v| (v.id, (v.correct, v.feedback)))
+        .map(|v| (v.id, (v.correct, v.feedback, v.note)))
         .collect();
 
     let mut items = Vec::new();
     let mut n_graded = 0usize;
     let mut n_correct = 0usize;
+    // concept_id -> (correct, total) for mastery transitions after the loop.
+    let mut by_concept: HashMap<i64, (usize, usize)> = HashMap::new();
     {
         let conn = state.db.0.lock().unwrap();
         for q in &questions {
@@ -243,7 +259,7 @@ pub async fn finish_quiz(app: AppHandle, state: State<'_, AppState>) -> CmdResul
             let (correct, feedback): (Option<bool>, String) = if q.kind == "mcq" {
                 let ok = user_answer.trim() == q.correct_answer.trim();
                 (Some(ok), String::new())
-            } else if let Some((ok, fb)) = verdict_map.get(&q.id) {
+            } else if let Some((ok, fb, _note)) = verdict_map.get(&q.id) {
                 (Some(*ok), fb.clone())
             } else {
                 (None, "grader unavailable — self-assess against the model answer".into())
@@ -253,6 +269,19 @@ pub async fn finish_quiz(app: AppHandle, state: State<'_, AppState>) -> CmdResul
                 n_graded += 1;
                 if counted_correct {
                     n_correct += 1;
+                }
+                if let Some((cid, _)) = concept_of.get(&q.id) {
+                    let e = by_concept.entry(*cid).or_insert((0, 0));
+                    e.1 += 1;
+                    if counted_correct {
+                        e.0 += 1;
+                    }
+                }
+            }
+            // Teacher's per-concept observation from the grader, kept for next encounter.
+            if let Some((_, _, note)) = verdict_map.get(&q.id) {
+                if let Some((cid, _)) = concept_of.get(&q.id) {
+                    let _ = crate::mastery::set_teacher_note(&conn, *cid, note);
                 }
             }
             db::record_attempt(
@@ -289,6 +318,12 @@ pub async fn finish_quiz(app: AppHandle, state: State<'_, AppState>) -> CmdResul
         } else {
             1.0
         };
+        // Mastery transitions: one quiz encounter per concept touched today.
+        for (cid, (ok, total)) in &by_concept {
+            if *total > 0 {
+                let _ = crate::mastery::record_quiz_outcome(&conn, *cid, &today, *ok as f64 / *total as f64);
+            }
+        }
         let mut s = db::get_session(&conn, &today).map_err(err)?.ok_or("no session")?;
         s.quiz_score = Some(score);
         s.current_step = session::STEP_REVIEW.into();
@@ -517,6 +552,7 @@ pub struct DashboardView {
     pub carryover_due: i64,
     pub concepts_total: i64,
     pub concepts_covered: i64,
+    pub mastery: Vec<crate::mastery::MasteryEntry>,
 }
 
 #[tauri::command]
@@ -533,7 +569,8 @@ pub fn get_dashboard(state: State<'_, AppState>) -> CmdResult<DashboardView> {
     let concepts_covered: i64 = conn
         .query_row("SELECT COUNT(*) FROM concepts WHERE times_picked > 0", [], |r| r.get(0))
         .map_err(err)?;
-    Ok(DashboardView { history, streak, carryover_due, concepts_total, concepts_covered })
+    let mastery = crate::mastery::overview(&conn).map_err(err)?;
+    Ok(DashboardView { history, streak, carryover_due, concepts_total, concepts_covered, mastery })
 }
 
 #[derive(Serialize)]

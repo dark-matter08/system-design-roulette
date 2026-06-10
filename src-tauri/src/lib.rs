@@ -2,6 +2,7 @@ pub mod commands;
 pub mod db;
 pub mod generator;
 pub mod kiosk;
+pub mod mastery;
 pub mod roulette;
 pub mod scheduler;
 pub mod session;
@@ -86,10 +87,17 @@ pub fn run() {
             let conn = db::open(&data_dir.join("roulette.db"))?;
             db::seed_concepts(&conn, SEED_CONCEPTS)?;
             let codex_bin = resolve_codex_bin(&conn);
+            // Primary model for course generation: config 'model' (default opus),
+            // SDR_MODEL env wins for testing.
+            let model = std::env::var("SDR_MODEL")
+                .ok()
+                .or_else(|| db::get_config(&conn, "model").ok().flatten())
+                .unwrap_or_else(|| "opus".to_string());
             let generator = generator::Generator::new(
                 resolve_claude_bin(),
                 codex_bin,
                 data_dir.join("scratch"),
+                model,
             );
             app.manage(AppState {
                 db: db::Db(Mutex::new(conn)),

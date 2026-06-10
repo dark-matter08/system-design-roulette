@@ -59,6 +59,7 @@ pub struct GeneratedQuiz {
 #[derive(Debug, Clone, Serialize)]
 pub struct GradeItem {
     pub id: i64,
+    pub concept: String,
     pub question: String,
     pub model_answer: String,
     pub user_answer: String,
@@ -70,6 +71,9 @@ pub struct Verdict {
     pub correct: bool,
     #[serde(default)]
     pub feedback: String,
+    /// Teacher's private observation about the student on this concept.
+    #[serde(default)]
+    pub note: String,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -82,11 +86,27 @@ pub struct Generator {
     pub claude_bin: String,
     pub codex_bin: Option<String>,
     pub scratch_dir: PathBuf,
+    /// Primary model for course generation (the expensive, quality-bound call).
+    /// Quiz and grading stay on sonnet: rubric-bound, latency-sensitive.
+    pub model: String,
 }
 
 pub const COURSE_PROMPT: &str = include_str!("../prompts/course.txt");
 pub const QUIZ_PROMPT: &str = include_str!("../prompts/quiz.txt");
 pub const GRADE_PROMPT: &str = include_str!("../prompts/grade.txt");
+pub const TEACHER_PROMPT: &str = include_str!("../prompts/teacher.txt");
+
+/// Model for quiz/grade/repair calls regardless of the configured primary.
+const SMALL_MODEL: &str = "sonnet";
+
+/// Prepend the Teacher role + dossier to a task prompt. Empty dossier
+/// (fresh install, day 1) skips the preamble entirely.
+fn with_teacher(dossier: &str, task_prompt: &str) -> String {
+    if dossier.trim().is_empty() {
+        return task_prompt.to_string();
+    }
+    format!("{}\n\n{}", TEACHER_PROMPT.replace("{{DOSSIER}}", dossier.trim()), task_prompt)
+}
 
 pub const FALLBACK_COURSES: &[&str] = &[
     include_str!("../seed/fallback_courses/rate-limiting.json"),
@@ -107,17 +127,25 @@ pub struct FallbackCourse {
 }
 
 impl Generator {
-    pub fn new(claude_bin: String, codex_bin: Option<String>, scratch_dir: PathBuf) -> Self {
+    pub fn new(claude_bin: String, codex_bin: Option<String>, scratch_dir: PathBuf, model: String) -> Self {
         let _ = std::fs::create_dir_all(&scratch_dir);
-        Self { claude_bin, codex_bin, scratch_dir }
+        Self { claude_bin, codex_bin, scratch_dir, model }
     }
 
-    pub async fn generate_course(&self, title: &str, category: &str) -> Result<(GeneratedCourse, String)> {
-        let prompt = COURSE_PROMPT
-            .replace("{{TITLE}}", title)
-            .replace("{{CATEGORY}}", category);
+    pub async fn generate_course(
+        &self,
+        title: &str,
+        category: &str,
+        dossier: &str,
+    ) -> Result<(GeneratedCourse, String)> {
+        let prompt = with_teacher(
+            dossier,
+            &COURSE_PROMPT
+                .replace("{{TITLE}}", title)
+                .replace("{{CATEGORY}}", category),
+        );
         match self
-            .run_with_fallback::<GeneratedCourse>(&prompt, true, Duration::from_secs(720))
+            .run_with_fallback::<GeneratedCourse>(&prompt, true, Duration::from_secs(720), &self.model)
             .await
         {
             Ok((course, source)) => Ok((course, source)),
@@ -137,10 +165,14 @@ impl Generator {
         }
     }
 
-    pub async fn generate_quiz(&self, course_markdown: &str) -> Result<(Vec<GeneratedQuestion>, String)> {
-        let prompt = QUIZ_PROMPT.replace("{{COURSE}}", course_markdown);
+    pub async fn generate_quiz(
+        &self,
+        course_markdown: &str,
+        dossier: &str,
+    ) -> Result<(Vec<GeneratedQuestion>, String)> {
+        let prompt = with_teacher(dossier, &QUIZ_PROMPT.replace("{{COURSE}}", course_markdown));
         match self
-            .run_with_fallback::<GeneratedQuiz>(&prompt, false, Duration::from_secs(180))
+            .run_with_fallback::<GeneratedQuiz>(&prompt, false, Duration::from_secs(180), SMALL_MODEL)
             .await
         {
             Ok((quiz, source)) => Ok((quiz.questions, source)),
@@ -160,7 +192,7 @@ impl Generator {
         let items_json = serde_json::to_string_pretty(items).ok()?;
         let prompt = GRADE_PROMPT.replace("{{ITEMS}}", &items_json);
         match self
-            .run_with_fallback::<Verdicts>(&prompt, false, Duration::from_secs(120))
+            .run_with_fallback::<Verdicts>(&prompt, false, Duration::from_secs(120), SMALL_MODEL)
             .await
         {
             Ok((v, _)) => Some(v.verdicts),
@@ -176,10 +208,14 @@ impl Generator {
         prompt: &str,
         web_tools: bool,
         timeout: Duration,
+        model: &str,
     ) -> Result<(T, String)> {
         let mut last_err: Option<GenError> = None;
         for attempt in 0..2 {
-            match self.run_claude(prompt, web_tools, timeout).await {
+            // Retry downgrades to the small model: cheaper, and routes around
+            // primary-model availability/timeout issues.
+            let attempt_model = if attempt == 0 { model } else { SMALL_MODEL };
+            match self.run_claude(prompt, web_tools, timeout, attempt_model).await {
                 Ok(raw) => match parse_json_payload::<T>(&raw) {
                     Ok(v) => return Ok((v, "claude".into())),
                     Err(_) => match self.repair_json::<T>(&raw).await {
@@ -209,14 +245,14 @@ impl Generator {
         Err(last_err.unwrap_or(GenError::NoBinary))
     }
 
-    async fn run_claude(&self, prompt: &str, web_tools: bool, timeout: Duration) -> Result<String> {
+    async fn run_claude(&self, prompt: &str, web_tools: bool, timeout: Duration, model: &str) -> Result<String> {
         let mut cmd = Command::new(&self.claude_bin);
         cmd.arg("-p")
             .arg(prompt)
             .arg("--output-format")
             .arg("json")
             .arg("--model")
-            .arg("sonnet")
+            .arg(model)
             .arg("--max-turns")
             .arg("25")
             .current_dir(&self.scratch_dir)
@@ -255,7 +291,7 @@ impl Generator {
             "The following text was supposed to be a single valid JSON object but is malformed or wrapped in prose. \
              Output ONLY the corrected JSON object inside one ```json fenced block, changing as little as possible:\n\n{truncated}"
         );
-        let out = self.run_claude(&prompt, false, Duration::from_secs(120)).await?;
+        let out = self.run_claude(&prompt, false, Duration::from_secs(120), SMALL_MODEL).await?;
         parse_json_payload::<T>(&out)
     }
 }
