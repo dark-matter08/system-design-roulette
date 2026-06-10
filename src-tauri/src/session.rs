@@ -502,9 +502,17 @@ pub async fn ensure_course_for_date(
     let course_row = {
         let conn = state.db.0.lock().unwrap();
         let id = db::insert_course(&conn, date, concept.id, &course.markdown, &resources_json, &source)?;
-        db::course_for_date(&conn, date)?.ok_or("course vanished")?;
-        let _ = id;
-        db::course_for_date(&conn, date)?.unwrap()
+        for q in &course.exit_questions {
+            let _ = db::insert_exit_question(
+                &conn,
+                id,
+                &q.prompt,
+                &serde_json::to_string(&q.choices)?,
+                &q.correct_answer,
+                &q.explanation,
+            );
+        }
+        db::course_for_date(&conn, date)?.ok_or("course vanished")?
     };
     // Mirror to a human-greppable markdown file.
     let mirror = state

@@ -53,6 +53,8 @@
 
 <div class="wheel-wrap">
   <svg viewBox="0 0 400 430" class="wheel-svg">
+    <!-- static chrome: dashed shard ring + boundary ticks -->
+    <circle cx="200" cy="200" r="190" class="ring-outer" />
     <g
       class="wheel"
       class:spinning
@@ -60,14 +62,22 @@
     >
       {#each pool as title, i}
         <path d={segPath(i)} class="seg" class:alt={i % 2 === 1} />
-        <text class="seg-label" text-anchor="middle" dy="4" transform={labelTransform(i)}>
+        <text class="seg-label mono" text-anchor="middle" dy="4" transform={labelTransform(i)}>
           {short(title)}
         </text>
+        <!-- shard LED at each segment's outer edge -->
+        {@const mid = ((i * segAngle + segAngle / 2 - 90) * Math.PI) / 180}
+        <circle cx={200 + 168 * Math.cos(mid)} cy={200 + 168 * Math.sin(mid)} r="2.5" class="shard-led" />
       {/each}
-      <circle cx="200" cy="200" r="42" class="hub" />
-      <text x="200" y="206" text-anchor="middle" class="hub-label">SDR</text>
+      <circle cx="200" cy="200" r="46" class="hub" />
+      <circle cx="200" cy="200" r="46" class="hub-ring" />
+      <circle cx="200" cy="178" r="3" class="hub-led" class:pulsing={spinning} />
+      <text x="200" y="200" text-anchor="middle" class="hub-label mono">topic</text>
+      <text x="200" y="214" text-anchor="middle" class="hub-label mono">selector</text>
     </g>
-    <path d="M200,8 L188,34 L212,34 Z" class="pointer" />
+    <!-- pointer: ingress pipe from the top -->
+    <line x1="200" y1="0" x2="200" y2="18" class="ptr-pipe" />
+    <path d="M200,34 L190,12 L210,12 Z" class="pointer" />
   </svg>
 </div>
 
@@ -85,27 +95,54 @@
   .wheel.spinning {
     transition: transform 5.2s cubic-bezier(0.12, 0.65, 0.08, 1);
   }
+  .ring-outer {
+    fill: none;
+    stroke: var(--node-border);
+    stroke-width: 1.2;
+    stroke-dasharray: 5 4;
+  }
   .seg {
-    fill: var(--surface);
-    stroke: var(--bg);
-    stroke-width: 2;
+    fill: var(--node-bg);
+    stroke: var(--node-divider);
+    stroke-width: 1.5;
   }
   .seg.alt {
-    fill: var(--surface-2);
+    fill: var(--surface);
   }
   .seg-label {
-    font-family: var(--font-body);
-    font-size: 11px;
+    font-size: 9.5px;
     fill: var(--muted);
+    letter-spacing: 0.2px;
+  }
+  .shard-led {
+    fill: var(--led-idle);
   }
   .hub {
-    fill: var(--accent);
+    fill: var(--node-bg);
+  }
+  .hub-ring {
+    fill: none;
+    stroke: var(--violet);
+    stroke-width: 1.5;
+    stroke-dasharray: 4 3;
+  }
+  .hub-led {
+    fill: var(--led-ok);
+  }
+  .hub-led.pulsing {
+    fill: var(--led-warn);
+    animation: led-pulse 0.6s ease infinite;
   }
   .hub-label {
-    font-family: var(--font-display);
-    font-size: 15px;
-    font-weight: 600;
-    fill: var(--accent-fg);
+    font-size: 9px;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    fill: var(--violet-fg);
+  }
+  .ptr-pipe {
+    stroke: var(--accent);
+    stroke-width: 1.5;
+    stroke-dasharray: 4 3;
   }
   .pointer {
     fill: var(--accent);

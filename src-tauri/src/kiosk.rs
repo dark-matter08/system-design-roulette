@@ -2,6 +2,42 @@ use crate::state::AppState;
 use std::sync::atomic::Ordering;
 use tauri::{AppHandle, Manager};
 
+/// Silence the room when the lock engages: pause every scriptable media
+/// player that's running, remember the system mute state, then mute.
+/// Best-effort — failures are logged and ignored.
+fn pause_media(state: &AppState) {
+    let was_muted = std::process::Command::new("osascript")
+        .args(["-e", "output muted of (get volume settings)"])
+        .output()
+        .ok()
+        .map(|o| String::from_utf8_lossy(&o.stdout).trim() == "true");
+    *state.prev_muted.lock().unwrap() = was_muted;
+
+    for app_name in ["Music", "Spotify", "TV", "QuickTime Player", "VLC", "IINA"] {
+        let script = format!(
+            "if application \"{app_name}\" is running then tell application \"{app_name}\" to pause"
+        );
+        let _ = std::process::Command::new("osascript")
+            .args(["-e", &script])
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn();
+    }
+    let _ = std::process::Command::new("osascript")
+        .args(["-e", "set volume output muted true"])
+        .spawn();
+}
+
+/// Restore the pre-lock mute state (only unmute if WE muted).
+fn restore_media(state: &AppState) {
+    if let Some(false) = *state.prev_muted.lock().unwrap() {
+        let _ = std::process::Command::new("osascript")
+            .args(["-e", "set volume output muted false"])
+            .spawn();
+    }
+    *state.prev_muted.lock().unwrap() = None;
+}
+
 #[cfg(target_os = "macos")]
 mod mac {
     use objc2::msg_send;
@@ -69,6 +105,7 @@ pub fn engage(app: &AppHandle, state: &AppState) {
     if state.locked.swap(true, Ordering::SeqCst) {
         return;
     }
+    pause_media(state);
     let Some(window) = app.get_webview_window("main") else {
         return;
     };
@@ -134,10 +171,12 @@ pub fn engage(app: &AppHandle, state: &AppState) {
             let pos = m.position();
             let size = m.size();
             let scale = m.scale_factor();
+            // NOTE: must be a real SvelteKit route — "index.html?x" makes the
+            // SPA router resolve pathname /index.html and render its 404 page.
             let built = tauri::WebviewWindowBuilder::new(
                 app,
                 &label,
-                tauri::WebviewUrl::App("index.html?blanker=1".into()),
+                tauri::WebviewUrl::App("blanker".into()),
             )
             .decorations(false)
             .resizable(false)
@@ -214,6 +253,7 @@ pub fn engage(app: &AppHandle, state: &AppState) {
 /// Release the kiosk lock and restore normal window behavior.
 pub fn release(app: &AppHandle, state: &AppState) {
     state.locked.store(false, Ordering::SeqCst);
+    restore_media(state);
     for (label, w) in app.webview_windows() {
         if label.starts_with("blanker-") {
             let _ = w.close();

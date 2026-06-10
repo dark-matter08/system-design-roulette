@@ -537,6 +537,115 @@ pub fn finish_course(app: AppHandle, state: State<'_, AppState>) -> CmdResult<Se
     Ok(session::view(&state))
 }
 
+#[derive(Serialize)]
+pub struct ExitQuizQuestion {
+    pub id: i64,
+    pub prompt: String,
+    pub choices: Vec<String>,
+}
+
+/// The 3-question exit check for TODAY's course. Generates on demand for
+/// courses created before this feature (small sonnet call). Correct answers
+/// never leave the backend.
+#[tauri::command]
+pub async fn get_exit_quiz(state: State<'_, AppState>) -> CmdResult<Vec<ExitQuizQuestion>> {
+    let today = state.today();
+    let (course, existing) = {
+        let conn = state.db.0.lock().unwrap();
+        let course = db::course_for_date(&conn, &today).map_err(err)?.ok_or("no course today")?;
+        let existing = db::exit_questions_for_course(&conn, course.id).map_err(err)?;
+        (course, existing)
+    };
+    let qs = if existing.is_empty() {
+        let generated = state
+            .generator
+            .generate_exit_quiz(&course.markdown)
+            .await
+            .map_err(|e| format!("exit check unavailable: {e}"))?;
+        let conn = state.db.0.lock().unwrap();
+        for q in &generated {
+            db::insert_exit_question(
+                &conn,
+                course.id,
+                &q.prompt,
+                &serde_json::to_string(&q.choices).map_err(err)?,
+                &q.correct_answer,
+                &q.explanation,
+            )
+            .map_err(err)?;
+        }
+        db::exit_questions_for_course(&conn, course.id).map_err(err)?
+    } else {
+        existing
+    };
+    Ok(qs
+        .into_iter()
+        .take(3)
+        .map(|q| ExitQuizQuestion { id: q.id, prompt: q.prompt, choices: q.choices })
+        .collect())
+}
+
+#[derive(Serialize)]
+pub struct ExitQuizResult {
+    pub passed: bool,
+    pub correct: Vec<i64>,
+    pub cooldown_seconds: i64,
+}
+
+/// Grade the exit check: all answers correct => the reading TTL unlocks now.
+/// Failures get a 60s cooldown so the gate can't be brute-forced.
+#[tauri::command]
+pub fn submit_exit_quiz(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    answers: HashMap<i64, String>,
+) -> CmdResult<ExitQuizResult> {
+    let now = chrono::Utc::now().timestamp();
+    {
+        let mut fails = state.exit_quiz_failures.lock().unwrap();
+        fails.retain(|t| now - *t < 60);
+        if !fails.is_empty() {
+            let wait = 60 - (now - fails.iter().max().copied().unwrap_or(now));
+            return Ok(ExitQuizResult { passed: false, correct: vec![], cooldown_seconds: wait.max(1) });
+        }
+    }
+    let today = state.today();
+    let qs = {
+        let conn = state.db.0.lock().unwrap();
+        let course = db::course_for_date(&conn, &today).map_err(err)?.ok_or("no course today")?;
+        db::exit_questions_for_course(&conn, course.id).map_err(err)?
+    };
+    if qs.is_empty() {
+        return Err("no exit check exists for today".into());
+    }
+    let correct: Vec<i64> = qs
+        .iter()
+        .filter(|q| {
+            answers
+                .get(&q.id)
+                .map(|a| a.trim() == q.correct_answer.trim())
+                .unwrap_or(false)
+        })
+        .map(|q| q.id)
+        .collect();
+    let passed = correct.len() == qs.len();
+    if passed {
+        // Burn the remaining TTL: the running timer sees 0 and fires timer:done.
+        let total = state.course_duration_secs();
+        state.reading_remaining.store(0, Ordering::SeqCst);
+        let conn = state.db.0.lock().unwrap();
+        if let Ok(Some(mut s)) = db::get_session(&conn, &today) {
+            s.reading_seconds = total;
+            let _ = db::upsert_session(&conn, &s);
+        }
+        let _ = app.emit("timer:tick", 0);
+        let _ = app.emit("timer:done", true);
+    } else {
+        state.exit_quiz_failures.lock().unwrap().push(now);
+    }
+    Ok(ExitQuizResult { passed, correct, cooldown_seconds: if passed { 0 } else { 60 } })
+}
+
 /// Voluntary "one more topic": re-opens today's completed session at the
 /// roulette with a fresh concept and a fresh reading timer. Never locks the
 /// kiosk and never becomes owed — purely user-initiated (TEACHER.md §5).

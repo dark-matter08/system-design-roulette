@@ -138,6 +138,14 @@ CREATE TABLE IF NOT EXISTS carryover (
     times_failed INTEGER NOT NULL DEFAULT 1,
     scheduled_for TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS exit_questions (
+    id INTEGER PRIMARY KEY,
+    course_id INTEGER NOT NULL REFERENCES courses(id),
+    prompt TEXT NOT NULL,
+    choices_json TEXT NOT NULL,
+    correct_answer TEXT NOT NULL,
+    explanation TEXT NOT NULL DEFAULT ''
+);
 CREATE TABLE IF NOT EXISTS mastery (
     concept_id INTEGER PRIMARY KEY REFERENCES concepts(id),
     state TEXT NOT NULL DEFAULT 'unseen'
@@ -378,6 +386,61 @@ pub fn quiz_for_date(conn: &Connection, date: &str, yesterday: &str) -> Result<V
     let rows = stmt.query_map(params![yesterday], row_to_question)?;
     for q in rows {
         out.push(q?);
+    }
+    Ok(out)
+}
+
+/// Exit-check questions: 3 MCQs on TODAY's course that unlock the reader
+/// early. Deliberately separate from `questions` (tomorrow's quiz).
+pub fn insert_exit_question(
+    conn: &Connection,
+    course_id: i64,
+    prompt: &str,
+    choices_json: &str,
+    correct_answer: &str,
+    explanation: &str,
+) -> Result<i64> {
+    conn.execute(
+        "INSERT INTO exit_questions (course_id, prompt, choices_json, correct_answer, explanation)
+         VALUES (?1, ?2, ?3, ?4, ?5)",
+        params![course_id, prompt, choices_json, correct_answer, explanation],
+    )?;
+    Ok(conn.last_insert_rowid())
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ExitQuestion {
+    pub id: i64,
+    pub prompt: String,
+    pub choices: Vec<String>,
+    pub correct_answer: String,
+    pub explanation: String,
+}
+
+pub fn exit_questions_for_course(conn: &Connection, course_id: i64) -> Result<Vec<ExitQuestion>> {
+    let mut stmt = conn.prepare(
+        "SELECT id, prompt, choices_json, correct_answer, explanation
+         FROM exit_questions WHERE course_id = ?1 ORDER BY id",
+    )?;
+    let rows = stmt.query_map(params![course_id], |r| {
+        Ok((
+            r.get::<_, i64>(0)?,
+            r.get::<_, String>(1)?,
+            r.get::<_, String>(2)?,
+            r.get::<_, String>(3)?,
+            r.get::<_, String>(4)?,
+        ))
+    })?;
+    let mut out = Vec::new();
+    for row in rows {
+        let (id, prompt, choices_json, correct_answer, explanation) = row?;
+        out.push(ExitQuestion {
+            id,
+            prompt,
+            choices: serde_json::from_str(&choices_json).unwrap_or_default(),
+            correct_answer,
+            explanation,
+        });
     }
     Ok(out)
 }

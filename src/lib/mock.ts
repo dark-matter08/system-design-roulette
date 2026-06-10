@@ -337,6 +337,50 @@ export const mockApi = {
     resources: RESOURCES,
   }),
   openResources: async () => RESOURCES.length,
+  getExitQuiz: async () => [
+    {
+      id: 1,
+      prompt: 'A ring with 3 physical nodes and no virtual nodes loses one node. Roughly how much of the keyspace remaps?',
+      choices: ['~1/3, all of it onto one neighbor', '~1/3, spread evenly', '~2/3 onto both neighbors', 'All keys remap'],
+    },
+    {
+      id: 2,
+      prompt: 'Virtual nodes primarily exist to…',
+      choices: [
+        'smooth load distribution and failure spread',
+        'reduce memory usage of the ring',
+        'make lookups O(1)',
+        'avoid hash collisions',
+      ],
+    },
+    {
+      id: 3,
+      prompt: 'Compared to mod-N hashing, consistent hashing wins because…',
+      choices: [
+        'adding a node remaps only ~K/N keys',
+        'it never remaps any keys',
+        'it requires no coordination at all',
+        'it makes hot keys impossible',
+      ],
+    },
+  ],
+  submitExitQuiz: async (answers: Record<number, string>) => {
+    const key: Record<number, string> = {
+      1: '~1/3, all of it onto one neighbor',
+      2: 'smooth load distribution and failure spread',
+      3: 'adding a node remaps only ~K/N keys',
+    };
+    const correct = Object.entries(key)
+      .filter(([id, a]) => answers[Number(id)] === a)
+      .map(([id]) => Number(id));
+    const passed = correct.length === 3;
+    if (passed) {
+      state.remaining = 0;
+      mockEmit('timer:tick', 0);
+      mockEmit('timer:done', true);
+    }
+    return { passed, correct, cooldown_seconds: passed ? 0 : 60 };
+  },
   extendSession: async (): Promise<SessionView> => {
     state.status = 'in_progress';
     state.step = 'roulette';

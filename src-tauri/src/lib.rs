@@ -109,6 +109,8 @@ pub fn run() {
                 timer_paused: AtomicBool::new(false),
                 debug_day,
                 escape_failures: Mutex::new(Vec::new()),
+                exit_quiz_failures: Mutex::new(Vec::new()),
+                prev_muted: Mutex::new(None),
                 gen_notify: tokio::sync::Notify::new(),
             });
 
@@ -195,6 +197,8 @@ pub fn run() {
             commands::ensure_course,
             commands::start_course,
             commands::finish_course,
+            commands::get_exit_quiz,
+            commands::submit_exit_quiz,
             commands::extend_session,
             commands::escape_session,
             commands::get_escape_phrase,

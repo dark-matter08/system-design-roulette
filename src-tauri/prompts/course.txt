@@ -14,5 +14,10 @@ Your entire final reply must be exactly one fenced JSON code block (```json ... 
   "title": string,
   "markdown": string,        // the full course in markdown, NOT including the resources
   "resources": [ { "title": string, "url": string, "type": "article"|"paper"|"video"|"docs", "why": string } ],
-  "key_takeaways": [ string, ... ]   // 4-6 one-sentence takeaways
+  "key_takeaways": [ string, ... ],  // 4-6 one-sentence takeaways
+  "exit_questions": [        // exactly 3 MCQs gating early exit from the timed reader:
+                             // they test THIS course's core mechanics — what a skimmer would miss.
+                             // 4 plausible choices each; correct_answer = exact text of the right choice.
+    { "prompt": string, "choices": [string,string,string,string], "correct_answer": string, "explanation": string }
+  ]
 }

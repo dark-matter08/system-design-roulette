@@ -1,0 +1,19 @@
+You are writing a 3-question exit check for a system design course the student claims to have just finished reading. Passing all 3 proves they actually absorbed it and unlocks the session early.
+
+Course markdown follows between the markers.
+---COURSE START---
+{{COURSE}}
+---COURSE END---
+
+Write exactly 3 multiple-choice questions:
+- They must test the core mechanics and trade-offs of THIS course — the things someone who skimmed would get wrong.
+- 4 plausible choices each, exactly one correct. Distractors must reflect real misconceptions, not obvious throwaways.
+- These are different from any end-of-course recap; do not reuse the course's own examples verbatim.
+- correct_answer is the exact text of the correct choice.
+
+Your entire final reply must be exactly one fenced JSON code block (```json ... ```) matching this schema, with no text before or after it:
+{
+  "questions": [
+    { "prompt": string, "choices": [string,string,string,string], "correct_answer": string, "explanation": string }
+  ]
+}

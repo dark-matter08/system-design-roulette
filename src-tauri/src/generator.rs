@@ -39,6 +39,24 @@ pub struct GeneratedCourse {
     pub resources: Vec<Resource>,
     #[serde(default)]
     pub key_takeaways: Vec<String>,
+    /// 3 MCQs that gate early exit from the reader (optional in the payload;
+    /// generated on demand if the model omits them).
+    #[serde(default)]
+    pub exit_questions: Vec<ExitCheck>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ExitCheck {
+    pub prompt: String,
+    pub choices: Vec<String>,
+    pub correct_answer: String,
+    #[serde(default)]
+    pub explanation: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct ExitChecks {
+    pub questions: Vec<ExitCheck>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -103,6 +121,7 @@ pub const QUIZ_PROMPT: &str = include_str!("../prompts/quiz.txt");
 pub const GRADE_PROMPT: &str = include_str!("../prompts/grade.txt");
 pub const TEACHER_PROMPT: &str = include_str!("../prompts/teacher.txt");
 pub const PLAN_PROMPT: &str = include_str!("../prompts/plan.txt");
+pub const EXIT_PROMPT: &str = include_str!("../prompts/exit.txt");
 
 /// Model for quiz/grade/repair calls regardless of the configured primary.
 const SMALL_MODEL: &str = "sonnet";
@@ -160,12 +179,26 @@ impl Generator {
             Err(e) => {
                 log::warn!("course generation failed entirely, using bundled fallback: {e}");
                 let fb = pick_fallback(title);
+                // Bundled courses carry quiz MCQs — reuse 3 as the exit check.
+                let exit_questions = fb
+                    .questions
+                    .iter()
+                    .filter(|q| q.kind == "mcq" && q.choices.is_some())
+                    .take(3)
+                    .map(|q| ExitCheck {
+                        prompt: q.prompt.clone(),
+                        choices: q.choices.clone().unwrap_or_default(),
+                        correct_answer: q.correct_answer.clone(),
+                        explanation: q.explanation.clone(),
+                    })
+                    .collect();
                 Ok((
                     GeneratedCourse {
                         title: fb.title,
                         markdown: fb.markdown,
                         resources: fb.resources,
                         key_takeaways: fb.key_takeaways,
+                        exit_questions,
                     },
                     "fallback".into(),
                 ))
@@ -190,6 +223,16 @@ impl Generator {
                 Ok((fb.questions, "fallback".into()))
             }
         }
+    }
+
+    /// On-demand exit check for a course generated before this feature
+    /// existed (or when the course payload omitted them). Small, fast call.
+    pub async fn generate_exit_quiz(&self, course_markdown: &str) -> Result<Vec<ExitCheck>> {
+        let prompt = EXIT_PROMPT.replace("{{COURSE}}", course_markdown);
+        let (checks, _) = self
+            .run_with_fallback::<ExitChecks>(&prompt, false, Duration::from_secs(120), SMALL_MODEL)
+            .await?;
+        Ok(checks.questions)
     }
 
     /// Ask the Teacher to choose tomorrow's session type. `eligible` describes

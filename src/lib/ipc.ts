@@ -106,6 +106,18 @@ export interface DashboardView {
   mastery: MasteryEntry[];
 }
 
+export interface ExitQuizQuestion {
+  id: number;
+  prompt: string;
+  choices: string[];
+}
+
+export interface ExitQuizResult {
+  passed: boolean;
+  correct: number[];
+  cooldown_seconds: number;
+}
+
 export interface ArchivedCourse {
   session_date: string;
   title: string;
@@ -138,6 +150,9 @@ const realApi = {
   finishCourse: () => invoke<SessionView>('finish_course'),
   escapeSession: (phrase: string) => invoke<boolean>('escape_session', { phrase }),
   extendSession: () => invoke<SessionView>('extend_session'),
+  getExitQuiz: () => invoke<ExitQuizQuestion[]>('get_exit_quiz'),
+  submitExitQuiz: (answers: Record<number, string>) =>
+    invoke<ExitQuizResult>('submit_exit_quiz', { answers }),
   getEscapePhrase: () => invoke<string>('get_escape_phrase'),
   getDashboard: () => invoke<DashboardView>('get_dashboard'),
   getPastCourse: (date: string) =>

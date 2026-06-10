@@ -20,6 +20,10 @@ pub struct AppState {
     pub debug_day: bool,
     /// Failed escape attempts (rate limiting the hatch).
     pub escape_failures: Mutex<Vec<i64>>,
+    /// Failed early-exit quiz attempts (60s cooldown).
+    pub exit_quiz_failures: Mutex<Vec<i64>>,
+    /// System mute state before the lock engaged (None = not captured).
+    pub prev_muted: Mutex<Option<bool>>,
     /// Background generation worker wakeup.
     pub gen_notify: tokio::sync::Notify,
 }
