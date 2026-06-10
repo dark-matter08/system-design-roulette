@@ -127,6 +127,7 @@ function appState(): AppStateView {
     schedule_hour: 19,
     schedule_minute: 0,
     debug_day: true,
+    enforcement_disarmed: params.has('disarmed'),
   };
 }
 

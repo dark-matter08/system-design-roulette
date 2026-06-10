@@ -22,6 +22,9 @@ pub struct AppStateView {
     pub schedule_minute: u32,
     pub agent_ok: Option<bool>,
     pub debug_day: bool,
+    /// ~/sdr-unlock exists: every lock releases instantly. Surfaced so a
+    /// leftover emergency file can't silently neuter enforcement.
+    pub enforcement_disarmed: bool,
 }
 
 /// Called by the webview on boot. Until this fires, the kiosk refuses to
@@ -42,6 +45,9 @@ pub fn get_app_state(state: State<'_, AppState>) -> CmdResult<AppStateView> {
             db::get_config(&conn, "schedule_minute").ok().flatten().and_then(|v| v.parse().ok()).unwrap_or(0),
         )
     };
+    let enforcement_disarmed = std::env::var_os("HOME")
+        .map(|h| std::path::Path::new(&h).join("sdr-unlock").exists())
+        .unwrap_or(false);
     Ok(AppStateView {
         onboarded,
         session: session::view(&state),
@@ -50,6 +56,7 @@ pub fn get_app_state(state: State<'_, AppState>) -> CmdResult<AppStateView> {
         schedule_minute: minute,
         agent_ok: None,
         debug_day: state.debug_day,
+        enforcement_disarmed,
     })
 }
 

@@ -19,6 +19,7 @@ export interface AppStateView {
   schedule_hour: number;
   schedule_minute: number;
   debug_day: boolean;
+  enforcement_disarmed: boolean;
 }
 
 export interface QuizQuestionView {

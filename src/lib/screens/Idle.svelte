@@ -60,6 +60,11 @@
     status={owed ? 'session owed — lock imminent' : 'all systems nominal'}
     tone={owed ? 'warn' : 'ok'}
   />
+  {#if app.state?.enforcement_disarmed}
+    <div class="disarmed mono">
+      ⚠ ENFORCEMENT DISARMED — ~/sdr-unlock exists; every lock releases instantly. Delete the file to re-arm.
+    </div>
+  {/if}
   <div class="idle-body">
     {#if owed}
       {@const isAudit = app.session?.session_type === 'pop_quiz'}
@@ -157,6 +162,15 @@
   }
   .resume {
     margin-bottom: 16px;
+  }
+  .disarmed {
+    background: var(--bad-bg);
+    color: var(--bad-fg);
+    border-bottom: 1px dashed var(--led-err);
+    font-size: 11px;
+    letter-spacing: 0.5px;
+    text-align: center;
+    padding: 7px 16px;
   }
   .edit-row {
     display: flex;
