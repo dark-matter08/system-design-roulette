@@ -118,6 +118,53 @@ pub fn engage(app: &AppHandle, state: &AppState) {
         });
     }
 
+    // Black out every other display with blanker windows.
+    if let Ok(monitors) = window.available_monitors() {
+        let primary = window.primary_monitor().ok().flatten();
+        for (i, m) in monitors.iter().enumerate() {
+            if let Some(p) = &primary {
+                if p.position() == m.position() {
+                    continue;
+                }
+            }
+            let label = format!("blanker-{i}");
+            if app.get_webview_window(&label).is_some() {
+                continue;
+            }
+            let pos = m.position();
+            let size = m.size();
+            let scale = m.scale_factor();
+            let built = tauri::WebviewWindowBuilder::new(
+                app,
+                &label,
+                tauri::WebviewUrl::App("index.html?blanker=1".into()),
+            )
+            .decorations(false)
+            .resizable(false)
+            .always_on_top(true)
+            .visible_on_all_workspaces(true)
+            .position(pos.x as f64 / scale, pos.y as f64 / scale)
+            .inner_size(size.width as f64 / scale, size.height as f64 / scale)
+            .build();
+            match built {
+                Ok(w) => {
+                    #[cfg(target_os = "macos")]
+                    {
+                        let w2 = w.clone();
+                        let _ = w.run_on_main_thread(move || {
+                            let _ = objc2::exception::catch(std::panic::AssertUnwindSafe(|| unsafe {
+                                if let Ok(ptr) = w2.ns_window() {
+                                    mac::raise_window(ptr as *mut objc2::runtime::AnyObject);
+                                }
+                            }));
+                        });
+                    }
+                }
+                Err(e) => log::warn!("blanker {label} failed: {e}"),
+            }
+        }
+    }
+
     // Refocus loop: snap focus back while locked.
     let app2 = app.clone();
     tauri::async_runtime::spawn(async move {
@@ -167,6 +214,11 @@ pub fn engage(app: &AppHandle, state: &AppState) {
 /// Release the kiosk lock and restore normal window behavior.
 pub fn release(app: &AppHandle, state: &AppState) {
     state.locked.store(false, Ordering::SeqCst);
+    for (label, w) in app.webview_windows() {
+        if label.starts_with("blanker-") {
+            let _ = w.close();
+        }
+    }
     let Some(window) = app.get_webview_window("main") else {
         return;
     };

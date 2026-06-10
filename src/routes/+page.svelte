@@ -13,9 +13,11 @@
   import EscapeHatch from '../lib/components/EscapeHatch.svelte';
 
   let reviewData = $state<ReviewData | null>(null);
+  const isBlanker =
+    typeof location !== 'undefined' && new URLSearchParams(location.search).has('blanker');
 
   $effect(() => {
-    app.init();
+    if (!isBlanker) app.init();
   });
 
   // Block common quit/close shortcuts while locked.
@@ -30,7 +32,9 @@
 <svelte:window onkeydown={onKeydown} oncontextmenu={(e) => app.session?.locked && e.preventDefault()} />
 
 <div id="app-root" class="theme-noir">
-  {#if app.screen === 'loading'}
+  {#if isBlanker}
+    <div style="flex: 1; background: #000;"></div>
+  {:else if app.screen === 'loading'}
     <div class="screen"><p>…</p></div>
   {:else if app.screen === 'setup'}
     <SetupWizard />
