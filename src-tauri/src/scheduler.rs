@@ -82,6 +82,21 @@ pub fn is_installed() -> bool {
     plist_path().map(|p| p.exists()).unwrap_or(false)
 }
 
+/// Self-heal: if the installed plist points at a different binary than the one
+/// running (e.g. setup was completed from a dev build, then the user switched
+/// to the installed app), rewrite it for the current executable.
+pub fn ensure_current(hour: u32, minute: u32) {
+    let Some(path) = plist_path() else { return };
+    let Ok(existing) = std::fs::read_to_string(&path) else { return };
+    let exe = current_exe_path();
+    if !existing.contains(&exe) {
+        log::info!("launchd plist points elsewhere; reinstalling for {exe}");
+        if let Err(e) = install(hour, minute) {
+            log::warn!("launchd self-heal failed: {e}");
+        }
+    }
+}
+
 fn get_uid() -> u32 {
     // SAFETY: getuid is always safe to call.
     unsafe { libc_getuid() }

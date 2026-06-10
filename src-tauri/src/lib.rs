@@ -104,6 +104,22 @@ pub fn run() {
                 gen_notify: tokio::sync::Notify::new(),
             });
 
+            // Self-heal the launchd plist if it points at a stale binary path
+            // (e.g. setup completed from a dev build).
+            if !debug_day {
+                let state = app.state::<AppState>();
+                let conn = state.db.0.lock().unwrap();
+                let onboarded = matches!(db::get_config(&conn, "onboarded"), Ok(Some(v)) if v == "1");
+                if onboarded {
+                    let hour: u32 = db::get_config(&conn, "schedule_hour")
+                        .ok().flatten().and_then(|v| v.parse().ok()).unwrap_or(9);
+                    let minute: u32 = db::get_config(&conn, "schedule_minute")
+                        .ok().flatten().and_then(|v| v.parse().ok()).unwrap_or(0);
+                    drop(conn);
+                    scheduler::ensure_current(hour, minute);
+                }
+            }
+
             // Background generation worker.
             let handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {

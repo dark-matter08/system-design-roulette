@@ -109,12 +109,17 @@ function session(): SessionView {
   };
 }
 
+let setupCompleted = false;
+
 function appState(): AppStateView {
+  const inSetup = location.search.includes('setup') && !setupCompleted;
   return {
-    onboarded: !location.search.includes('setup'),
+    onboarded: !inSetup,
     session: session(),
-    owed: true,
-    schedule_hour: 9,
+    // After completing setup the session is not owed yet (scheduled time is
+    // in the future) — mirrors the real backend so routing bugs reproduce.
+    owed: !setupCompleted,
+    schedule_hour: 19,
     schedule_minute: 0,
     debug_day: true,
   };
@@ -198,7 +203,10 @@ const REVIEW: ReviewData = {
 export const mockApi = {
   getAppState: async () => appState(),
   checkAgent: async () => true,
-  completeSetup: async () => appState(),
+  completeSetup: async () => {
+    setupCompleted = true;
+    return appState();
+  },
   updateSchedule: async () => {},
   startSession: async () => {
     state.status = 'in_progress';

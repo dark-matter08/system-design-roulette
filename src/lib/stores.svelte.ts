@@ -54,7 +54,9 @@ class AppStore {
       this.screen = 'idle';
       return;
     }
-    if (this.screen === 'loading') this.screen = 'idle';
+    // Not owed, nothing in progress: leave user-navigated screens (dashboard)
+    // alone, but transient screens (loading, setup) must land somewhere.
+    if (this.screen === 'loading' || this.screen === 'setup') this.screen = 'idle';
   }
 
   async init() {
