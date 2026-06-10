@@ -137,6 +137,7 @@ const realApi = {
   startCourse: () => invoke<SessionView>('start_course'),
   finishCourse: () => invoke<SessionView>('finish_course'),
   escapeSession: (phrase: string) => invoke<boolean>('escape_session', { phrase }),
+  extendSession: () => invoke<SessionView>('extend_session'),
   getEscapePhrase: () => invoke<string>('get_escape_phrase'),
   getDashboard: () => invoke<DashboardView>('get_dashboard'),
   getPastCourse: (date: string) =>

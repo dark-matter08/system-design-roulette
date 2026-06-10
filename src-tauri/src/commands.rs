@@ -537,6 +537,43 @@ pub fn finish_course(app: AppHandle, state: State<'_, AppState>) -> CmdResult<Se
     Ok(session::view(&state))
 }
 
+/// Voluntary "one more topic": re-opens today's completed session at the
+/// roulette with a fresh concept and a fresh reading timer. Never locks the
+/// kiosk and never becomes owed — purely user-initiated (TEACHER.md §5).
+#[tauri::command]
+pub fn extend_session(app: AppHandle, state: State<'_, AppState>) -> CmdResult<SessionView> {
+    let today = state.today();
+    let tomorrow = state.tomorrow();
+    {
+        let conn = state.db.0.lock().unwrap();
+        let mut s = db::get_session(&conn, &today).map_err(err)?.ok_or("no session")?;
+        if s.status != "completed" {
+            return Err("extend is only available after today's session is complete".into());
+        }
+        // New spin, new course, new timer; today's earlier course stays archived.
+        let c = crate::roulette::draw(&conn, &today).map_err(err)?.ok_or("empty pool")?;
+        s.concept_id = Some(c.id);
+        s.status = "in_progress".into();
+        s.current_step = session::STEP_ROULETTE.into();
+        s.reading_seconds = 0;
+        db::upsert_session(&conn, &s).map_err(err)?;
+        db::set_config(&conn, &format!("extended:{today}"), "1").map_err(err)?;
+        // Appetite tracking for the dossier.
+        let n: i64 = crate::mastery::get_profile(&conn, "multi_topic_days")
+            .ok()
+            .flatten()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(0);
+        let _ = crate::mastery::set_profile(&conn, "multi_topic_days", &(n + 1).to_string());
+        // Tomorrow's quiz must also cover the extension course.
+        db::jobs::requeue(&conn, "quiz", &tomorrow).map_err(err)?;
+    }
+    state.reading_remaining.store(0, Ordering::SeqCst);
+    let v = session::view(&state);
+    let _ = app.emit("session:state", v.clone());
+    Ok(v)
+}
+
 #[tauri::command]
 pub fn escape_session(app: AppHandle, state: State<'_, AppState>, phrase: String) -> CmdResult<bool> {
     match crate::kiosk::verify_escape(&state, &phrase)? {

@@ -606,6 +606,18 @@ pub mod jobs {
         Ok(())
     }
 
+    /// Force a job back to queued even if it already ran (used when an
+    /// extended session adds a course after tomorrow's quiz was generated).
+    pub fn requeue(conn: &Connection, kind: &str, target_date: &str) -> Result<()> {
+        conn.execute(
+            "INSERT INTO generation_jobs (kind, target_date, status, created_at)
+             VALUES (?1, ?2, 'queued', datetime('now'))
+             ON CONFLICT(kind, target_date) DO UPDATE SET status = 'queued', attempts = 0",
+            params![kind, target_date],
+        )?;
+        Ok(())
+    }
+
     pub fn next_queued(conn: &Connection) -> Result<Option<(i64, String, String)>> {
         let mut stmt = conn.prepare(
             "SELECT id, kind, target_date FROM generation_jobs

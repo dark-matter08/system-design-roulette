@@ -13,6 +13,15 @@
     const n = await api.openResources().catch(() => 0);
     resourcesOpened = n > 0;
   }
+
+  async function extend() {
+    try {
+      await api.extendSession();
+      await app.refresh();
+    } catch (e) {
+      app.error = String(e);
+    }
+  }
 </script>
 
 <div class="done blueprint">
@@ -52,6 +61,9 @@
         </button>
         <button class="ghost mono-ghost" onclick={() => (app.screen = 'dashboard')}>cluster overview</button>
       </div>
+      <button class="ghost mono-ghost extend" onclick={extend}>
+        ▲ extend session — one more topic (voluntary, no lock)
+      </button>
     {/if}
   </div>
 </div>
@@ -99,5 +111,11 @@
     display: flex;
     gap: 12px;
     align-items: center;
+  }
+  .extend {
+    margin-top: 18px;
+    border-style: dashed;
+    color: var(--violet-fg);
+    border-color: var(--violet);
   }
 </style>

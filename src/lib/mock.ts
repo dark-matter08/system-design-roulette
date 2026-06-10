@@ -337,4 +337,9 @@ export const mockApi = {
     resources: RESOURCES,
   }),
   openResources: async () => RESOURCES.length,
+  extendSession: async (): Promise<SessionView> => {
+    state.status = 'in_progress';
+    state.step = 'roulette';
+    return session();
+  },
 };

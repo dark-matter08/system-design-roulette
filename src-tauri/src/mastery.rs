@@ -252,6 +252,11 @@ pub fn build_dossier(conn: &Connection, today: &str) -> Result<String> {
         days_taught + 1,
         streak
     ));
+    if let Ok(Some(n)) = get_profile(conn, "multi_topic_days") {
+        out.push_str(&format!(
+            "Voluntary extra-topic sessions taken: {n} — this student sometimes asks for more.\n"
+        ));
+    }
     if !mastered.is_empty() {
         out.push_str(&format!("MASTERED ({}): {}\n", mastered.len(), titles(&mastered)));
     }

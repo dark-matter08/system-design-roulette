@@ -195,6 +195,7 @@ pub fn run() {
             commands::ensure_course,
             commands::start_course,
             commands::finish_course,
+            commands::extend_session,
             commands::escape_session,
             commands::get_escape_phrase,
             commands::get_dashboard,

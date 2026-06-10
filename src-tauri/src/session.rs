@@ -39,6 +39,11 @@ pub fn session_owed(state: &AppState) -> bool {
             return false;
         }
     }
+    // A voluntary extension re-opens the session but is never owed — the
+    // kiosk must not re-engage on extra topics the user chose to do.
+    if matches!(db::get_config(&conn, &format!("extended:{today}")), Ok(Some(v)) if v == "1") {
+        return false;
+    }
     if state.debug_day {
         return true;
     }
@@ -450,7 +455,12 @@ pub async fn ensure_course_for_date(
     {
         let conn = state.db.0.lock().unwrap();
         if let Some(c) = db::course_for_date(&conn, date)? {
-            return Ok(c);
+            // Reuse unless the session points at a different concept (an
+            // extended session re-spun the wheel — generate for the new topic).
+            let session_concept = db::get_session(&conn, date)?.and_then(|s| s.concept_id);
+            if session_concept.is_none() || session_concept == Some(c.concept_id) {
+                return Ok(c);
+            }
         }
     }
     // Draw (or reuse) the concept for that date's session.
