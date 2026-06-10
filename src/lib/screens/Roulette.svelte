@@ -1,13 +1,13 @@
 <script lang="ts">
   import { api, type RouletteView } from '../ipc';
   import { app } from '../stores.svelte';
-  import Wheel from '../components/Wheel.svelte';
+  import ShardRouter from '../components/ShardRouter.svelte';
   import ClusterBar from '../components/ClusterBar.svelte';
   import StatusLED from '../components/StatusLED.svelte';
   import MetaBadge from '../components/MetaBadge.svelte';
 
   let data = $state<RouletteView | null>(null);
-  let wheel = $state<ReturnType<typeof Wheel>>();
+  let wheel = $state<ReturnType<typeof ShardRouter>>();
   let phase = $state<'ready' | 'spinning' | 'landed' | 'generating'>('ready');
 
   $effect(() => {
@@ -46,11 +46,17 @@
         TOPIC_SELECTOR — pool: {data.pool_unlocked}/{data.pool_total} unlocked · {data.pool_total -
           data.pool_unlocked} provisioning
       </div>
-      <Wheel bind:this={wheel} pool={data.pool} chosenIndex={data.chosen_index} onLanded={landed} />
+      <ShardRouter
+        bind:this={wheel}
+        pool={data.pool}
+        chosenIndex={data.chosen_index}
+        lockedCount={data.pool_total - data.pool_unlocked}
+        onLanded={landed}
+      />
       {#if phase === 'ready'}
-        <button class="cta mono-cta" onclick={spin}>⟳ spin</button>
+        <button class="cta mono-cta" onclick={spin}>⇢ dispatch request</button>
       {:else if phase === 'spinning'}
-        <div class="mono dim">selecting…</div>
+        <div class="mono dim">routing…</div>
       {:else if phase === 'landed'}
         <h1 class="topic">{data.concept_title}</h1>
         <MetaBadge tone="violet">{#snippet children()}shard: {data?.concept_category}{/snippet}</MetaBadge>
