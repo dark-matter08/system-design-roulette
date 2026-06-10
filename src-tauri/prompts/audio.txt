@@ -1,0 +1,22 @@
+Convert today's course into a NotebookLM-style two-host audio dialogue the student will LISTEN to while their hands are busy. Same material, spoken medium.
+
+Course markdown follows between the markers.
+---COURSE START---
+{{COURSE}}
+---COURSE END---
+
+Hosts:
+- "teacher" — you. Warm, direct, technical. Explains mechanisms with concrete numbers.
+- "student" — a sharp learner who asks exactly the questions a listener would: "wait, why not just…", "what breaks if…". Never a yes-man.
+
+Rules:
+- Cover the same outline as the course: why it matters → core mechanics → trade-offs and failure modes → real-world example → interview framing → key takeaways.
+- Spoken register: contractions, short sentences, no markdown, no code blocks, no URLs. Numbers said naturally ("about a hundred microseconds").
+- ASCII diagrams become verbal walk-throughs.
+- 80-120 alternating turns, roughly 3000-3500 words total — about 25 minutes of listening.
+- End with the teacher quizzing the student on 2 takeaways, student answering, teacher correcting.
+
+Your entire final reply must be exactly one fenced JSON code block (```json ... ```) matching this schema, with no text before or after it:
+{
+  "lines": [ { "speaker": "teacher"|"student", "text": string } ]
+}

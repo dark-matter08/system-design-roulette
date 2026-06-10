@@ -537,6 +537,38 @@ pub fn finish_course(app: AppHandle, state: State<'_, AppState>) -> CmdResult<Se
     Ok(session::view(&state))
 }
 
+/// Audio lesson for today: returns the dialogue script (generating it live if
+/// missing — ~1 min sonnet call) plus the playback engine. The frontend uses
+/// speechSynthesis unless rendered files exist.
+#[tauri::command]
+pub async fn ensure_audio(app: AppHandle, state: State<'_, AppState>) -> CmdResult<crate::audio::AudioView> {
+    let today = state.today();
+    let course = {
+        let conn = state.db.0.lock().unwrap();
+        db::course_for_date(&conn, &today).map_err(err)?.ok_or("no course today")?
+    };
+    let _ = app.emit("gen:status", "writing audio script from today's course");
+    session::ensure_audio_for_course(&state, &course, &today)
+        .await
+        .map_err(|e| format!("audio unavailable: {e}"))?;
+    let conn = state.db.0.lock().unwrap();
+    crate::audio::get_script(&conn, course.id)
+        .map_err(err)?
+        .ok_or_else(|| "audio script missing after generation".into())
+}
+
+#[tauri::command]
+pub fn get_audio_enabled(state: State<'_, AppState>) -> CmdResult<bool> {
+    let conn = state.db.0.lock().unwrap();
+    Ok(matches!(db::get_config(&conn, "audio_enabled"), Ok(Some(v)) if v == "1"))
+}
+
+#[tauri::command]
+pub fn set_audio_enabled(state: State<'_, AppState>, enabled: bool) -> CmdResult<()> {
+    let conn = state.db.0.lock().unwrap();
+    db::set_config(&conn, "audio_enabled", if enabled { "1" } else { "0" }).map_err(err)
+}
+
 #[derive(Serialize)]
 pub struct ExitQuizQuestion {
     pub id: i64,

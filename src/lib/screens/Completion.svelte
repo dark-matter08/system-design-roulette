@@ -8,6 +8,16 @@
   const session = $derived(app.session);
   const skipped = $derived(session?.status === 'skipped');
   let resourcesOpened = $state(false);
+  let audioOn = $state(false);
+
+  $effect(() => {
+    api.getAudioEnabled().then((v) => (audioOn = v)).catch(() => {});
+  });
+
+  async function toggleAudio() {
+    audioOn = !audioOn;
+    await api.setAudioEnabled(audioOn).catch(() => {});
+  }
 
   async function openResources() {
     const n = await api.openResources().catch(() => 0);
@@ -64,6 +74,9 @@
       <button class="ghost mono-ghost extend" onclick={extend}>
         ▲ extend session — one more topic (voluntary, no lock)
       </button>
+      <button class="ghost mono-ghost audio-toggle" onclick={toggleAudio}>
+        🎧 audio lesson tomorrow: {audioOn ? 'ON — script pre-renders overnight' : 'off'}
+      </button>
     {/if}
   </div>
 </div>
@@ -117,5 +130,9 @@
     border-style: dashed;
     color: var(--violet-fg);
     border-color: var(--violet);
+  }
+  .audio-toggle {
+    margin-top: 10px;
+    font-size: 10px;
   }
 </style>

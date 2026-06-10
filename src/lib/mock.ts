@@ -337,6 +337,20 @@ export const mockApi = {
     resources: RESOURCES,
   }),
   openResources: async () => RESOURCES.length,
+  ensureAudio: async () => ({
+    engine: 'speech' as const,
+    lines: [
+      { speaker: 'teacher' as const, text: "Alright — today we're talking about consistent hashing. Before I explain anything: you've got ten cache servers and a million keys. How do you decide which key lives where?" },
+      { speaker: 'student' as const, text: 'Easy, hash the key and take it modulo ten?' },
+      { speaker: 'teacher' as const, text: "Perfect answer — and completely wrong the moment anything changes. Add an eleventh server and almost every key now maps somewhere new. You just wiped your own cache." },
+      { speaker: 'student' as const, text: 'Wait, all of them? Not just a tenth?' },
+      { speaker: 'teacher' as const, text: 'Nearly all. Modulo arithmetic reshuffles everything when N changes. Consistent hashing fixes exactly this: put the servers on a ring, hash each key onto the ring, and a key belongs to the first server clockwise from it.' },
+      { speaker: 'student' as const, text: 'So when a server joins, it only steals keys from its clockwise neighbor?' },
+      { speaker: 'teacher' as const, text: "Now you've got it — about K over N keys move, which is the theoretical minimum." },
+    ],
+  }),
+  getAudioEnabled: async () => false,
+  setAudioEnabled: async () => {},
   getExitQuiz: async () => [
     {
       id: 1,

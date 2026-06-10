@@ -402,7 +402,18 @@ async fn run_generation_job(
             if session_type == "pop_quiz" {
                 return Ok(());
             }
-            ensure_course_for_date(state, target_date).await?;
+            let course = ensure_course_for_date(state, target_date).await?;
+            // Audio mode: script (and, if provisioned, VibeVoice render)
+            // happen in this same overnight window. Failures never block.
+            let audio_on = {
+                let conn = state.db.0.lock().unwrap();
+                matches!(db::get_config(&conn, "audio_enabled"), Ok(Some(v)) if v == "1")
+            };
+            if audio_on {
+                if let Err(e) = ensure_audio_for_course(state, &course, target_date).await {
+                    log::warn!("audio prep failed (session unaffected): {e}");
+                }
+            }
             Ok(())
         }
         "quiz" => {
@@ -445,6 +456,41 @@ async fn run_generation_job(
         }
         other => Err(format!("unknown job kind {other}").into()),
     }
+}
+
+/// Script (always) + VibeVoice render (when the venv is provisioned) for a course.
+pub async fn ensure_audio_for_course(
+    state: &tauri::State<'_, AppState>,
+    course: &db::Course,
+    date: &str,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let existing = {
+        let conn = state.db.0.lock().unwrap();
+        crate::audio::get_script(&conn, course.id)?
+    };
+    let lines = match existing {
+        Some(v) => v.lines,
+        None => {
+            let lines = state.generator.generate_audio_script(&course.markdown).await?;
+            if lines.is_empty() {
+                return Err("empty audio script".into());
+            }
+            let conn = state.db.0.lock().unwrap();
+            crate::audio::save_script(&conn, course.id, &lines)?;
+            lines
+        }
+    };
+    if crate::audio::vibevoice_python(&state.data_dir).is_some() {
+        let already_rendered = lines.iter().any(|l| l.file.is_some());
+        if !already_rendered {
+            let dir = crate::audio::render_vibevoice(&state.data_dir, date, &lines)
+                .await
+                .map_err(|e| format!("vibevoice render: {e}"))?;
+            let conn = state.db.0.lock().unwrap();
+            crate::audio::mark_rendered(&conn, course.id, &dir)?;
+        }
+    }
+    Ok(())
 }
 
 /// Make sure a course exists for `date`: draw a concept if needed, generate, persist.

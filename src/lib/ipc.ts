@@ -106,6 +106,17 @@ export interface DashboardView {
   mastery: MasteryEntry[];
 }
 
+export interface AudioLine {
+  speaker: 'teacher' | 'student';
+  text: string;
+  file?: string | null;
+}
+
+export interface AudioView {
+  lines: AudioLine[];
+  engine: 'speech' | 'vibevoice';
+}
+
 export interface ExitQuizQuestion {
   id: number;
   prompt: string;
@@ -150,6 +161,9 @@ const realApi = {
   finishCourse: () => invoke<SessionView>('finish_course'),
   escapeSession: (phrase: string) => invoke<boolean>('escape_session', { phrase }),
   extendSession: () => invoke<SessionView>('extend_session'),
+  ensureAudio: () => invoke<AudioView>('ensure_audio'),
+  getAudioEnabled: () => invoke<boolean>('get_audio_enabled'),
+  setAudioEnabled: (enabled: boolean) => invoke<void>('set_audio_enabled', { enabled }),
   getExitQuiz: () => invoke<ExitQuizQuestion[]>('get_exit_quiz'),
   submitExitQuiz: (answers: Record<number, string>) =>
     invoke<ExitQuizResult>('submit_exit_quiz', { answers }),

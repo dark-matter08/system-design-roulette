@@ -138,6 +138,13 @@ CREATE TABLE IF NOT EXISTS carryover (
     times_failed INTEGER NOT NULL DEFAULT 1,
     scheduled_for TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS audio_scripts (
+    course_id INTEGER PRIMARY KEY REFERENCES courses(id),
+    lines_json TEXT NOT NULL,
+    engine TEXT NOT NULL DEFAULT 'speech',  -- 'speech' (webview TTS) | 'vibevoice' (rendered files)
+    audio_dir TEXT,                          -- set when files are rendered
+    created_at TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS exit_questions (
     id INTEGER PRIMARY KEY,
     course_id INTEGER NOT NULL REFERENCES courses(id),

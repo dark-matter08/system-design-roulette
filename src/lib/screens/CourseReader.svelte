@@ -1,9 +1,30 @@
 <script lang="ts">
-  import { api, type CourseView, type ExitQuizQuestion } from '../ipc';
+  import { api, type CourseView, type ExitQuizQuestion, type AudioView } from '../ipc';
   import { app } from '../stores.svelte';
   import Markdown from '../components/Markdown.svelte';
+  import AudioPlayer from '../components/AudioPlayer.svelte';
 
   let course = $state<CourseView | null>(null);
+
+  // ---- audio lesson ----
+  let audio = $state<AudioView | null>(null);
+  let audioLoading = $state(false);
+  let audioErr = $state('');
+  async function loadAudio() {
+    if (audio) {
+      audio = null; // toggle off
+      return;
+    }
+    audioLoading = true;
+    audioErr = '';
+    try {
+      audio = await api.ensureAudio();
+    } catch (e) {
+      audioErr = String(e);
+    } finally {
+      audioLoading = false;
+    }
+  }
 
   const remaining = $derived(
     app.timerRemaining >= 0 ? app.timerRemaining : (course?.remaining_seconds ?? 1)
@@ -146,6 +167,9 @@
           {/if}
         </div>
         <div class="head-right">
+          <button class="ghost mono-ghost listen" onclick={loadAudio} disabled={audioLoading}>
+            {audioLoading ? '… writing script' : audio ? '🎧 listening' : '🎧 listen'}
+          </button>
           <div class="font-ctl mono">
             <button onclick={() => bumpFont(-1)} aria-label="smaller text">A−</button>
             <button onclick={() => bumpFont(1)} aria-label="larger text">A+</button>
@@ -159,6 +183,12 @@
         </div>
       </div>
       <div class="progress-track"><div class="progress-fill" style="width: {pct}%"></div></div>
+      {#if audio}
+        <AudioPlayer lines={audio.lines} engine={audio.engine} />
+        <div style="height: 12px"></div>
+      {:else if audioErr}
+        <p class="mono audio-err">✗ {audioErr}</p>
+      {/if}
     </header>
 
     <div class="reader-layout">
@@ -303,6 +333,14 @@
   .prove {
     border-color: var(--accent);
     color: var(--accent);
+  }
+  .listen {
+    border-color: var(--border);
+  }
+  .audio-err {
+    font-size: 11px;
+    color: var(--bad-fg);
+    margin: 6px 24px;
   }
   .node-tag {
     font-size: 10px;

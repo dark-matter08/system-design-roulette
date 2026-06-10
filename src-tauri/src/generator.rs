@@ -122,6 +122,7 @@ pub const GRADE_PROMPT: &str = include_str!("../prompts/grade.txt");
 pub const TEACHER_PROMPT: &str = include_str!("../prompts/teacher.txt");
 pub const PLAN_PROMPT: &str = include_str!("../prompts/plan.txt");
 pub const EXIT_PROMPT: &str = include_str!("../prompts/exit.txt");
+pub const AUDIO_PROMPT: &str = include_str!("../prompts/audio.txt");
 
 /// Model for quiz/grade/repair calls regardless of the configured primary.
 const SMALL_MODEL: &str = "sonnet";
@@ -223,6 +224,24 @@ impl Generator {
                 Ok((fb.questions, "fallback".into()))
             }
         }
+    }
+
+    /// Two-host dialogue script for audio-lesson mode. Spoken-register
+    /// rewrite of the course; rendered or speech-synthesized by the caller.
+    pub async fn generate_audio_script(
+        &self,
+        course_markdown: &str,
+    ) -> Result<Vec<crate::audio::ScriptLine>> {
+        let prompt = AUDIO_PROMPT.replace("{{COURSE}}", course_markdown);
+        let (script, _) = self
+            .run_with_fallback::<crate::audio::GeneratedScript>(
+                &prompt,
+                false,
+                Duration::from_secs(300),
+                SMALL_MODEL,
+            )
+            .await?;
+        Ok(script.lines)
     }
 
     /// On-demand exit check for a course generated before this feature

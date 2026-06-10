@@ -1,3 +1,4 @@
+pub mod audio;
 pub mod commands;
 pub mod db;
 pub mod generator;
@@ -197,6 +198,9 @@ pub fn run() {
             commands::ensure_course,
             commands::start_course,
             commands::finish_course,
+            commands::ensure_audio,
+            commands::get_audio_enabled,
+            commands::set_audio_enabled,
             commands::get_exit_quiz,
             commands::submit_exit_quiz,
             commands::extend_session,
