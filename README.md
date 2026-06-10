@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="docs/logo-mark.svg" width="140" alt="System Design Roulette — the elected shard" />
+</p>
+
 # System Design Roulette
 
 **A macOS app that hijacks your laptop once a day and forces you to get better at system design.**
