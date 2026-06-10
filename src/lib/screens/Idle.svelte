@@ -86,9 +86,16 @@
       <div class="badges">
         <MetaBadge tone="teal">{#snippet children()}● uptime {streak}d{/snippet}</MetaBadge>
       </div>
+      {#if app.session?.status === 'in_progress'}
+        <button class="cta mono-cta resume" onclick={() => app.resumeSession()}>
+          ▶ resume session — paused at {app.session.step}
+        </button>
+      {/if}
       <div class="actions">
         <button class="ghost mono-ghost" onclick={() => (app.screen = 'dashboard')}>cluster overview</button>
-        <button class="ghost mono-ghost" onclick={begin}>deploy early</button>
+        {#if app.session?.status !== 'in_progress'}
+          <button class="ghost mono-ghost" onclick={begin}>deploy early</button>
+        {/if}
         <button class="ghost mono-ghost" onclick={() => (editing = !editing)}>reschedule</button>
       </div>
       {#if editing}
@@ -147,6 +154,9 @@
   .actions {
     display: flex;
     gap: 10px;
+  }
+  .resume {
+    margin-bottom: 16px;
   }
   .edit-row {
     display: flex;

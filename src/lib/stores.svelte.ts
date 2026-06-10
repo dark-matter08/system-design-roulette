@@ -17,6 +17,9 @@ class AppStore {
   genStatus = $state<string>('');
   timerRemaining = $state<number>(-1);
   error = $state<string>('');
+  /** User stepped away from an UNLOCKED in-progress session (early start /
+   *  extension). Cleared the moment the session is owed or locked. */
+  stepAway = $state(false);
 
   get session(): SessionView | null {
     return this.state?.session ?? null;
@@ -41,10 +44,17 @@ class AppStore {
     }
     const sess = s.session;
     if (sess.status === 'in_progress') {
+      // Enforcement always wins; voluntary sessions can be stepped away from.
+      if (sess.locked || s.owed) this.stepAway = false;
+      if (this.stepAway) {
+        if (this.screen === 'loading') this.screen = 'idle';
+        return;
+      }
       this.screen = sess.step as Screen;
       if (sess.step === 'done') this.screen = 'completion';
       return;
     }
+    this.stepAway = false;
     if ((sess.status === 'completed' || sess.status === 'skipped') && this.screen !== 'dashboard') {
       this.screen = 'completion';
       return;
@@ -57,6 +67,19 @@ class AppStore {
     // Not owed, nothing in progress: leave user-navigated screens (dashboard)
     // alone, but transient screens (loading, setup) must land somewhere.
     if (this.screen === 'loading' || this.screen === 'setup') this.screen = 'idle';
+  }
+
+  /** Leave an unlocked in-progress session for the idle/dashboard screens. */
+  leaveSession() {
+    if (this.session?.locked) return;
+    this.stepAway = true;
+    this.screen = 'idle';
+  }
+
+  /** Return to the in-progress session at its saved step. */
+  resumeSession() {
+    this.stepAway = false;
+    this.route();
   }
 
   async init() {

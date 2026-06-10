@@ -105,7 +105,8 @@ function session(): SessionView {
     step: state.step,
     quiz_score: state.score,
     streak: 17,
-    locked: state.status === 'in_progress',
+    // &unlocked previews voluntary (early-start/extension) sessions.
+    locked: state.status === 'in_progress' && !params.has('unlocked'),
     // ?type=pop_quiz previews an audit day in the browser demo.
     session_type: params.get('type') === 'pop_quiz' ? 'pop_quiz' : 'lesson',
     plan_reason:
@@ -122,7 +123,7 @@ function appState(): AppStateView {
     session: session(),
     // After completing setup the session is not owed yet (scheduled time is
     // in the future) — mirrors the real backend so routing bugs reproduce.
-    owed: !setupCompleted,
+    owed: !setupCompleted && !params.has('unlocked'),
     schedule_hour: 19,
     schedule_minute: 0,
     debug_day: true,

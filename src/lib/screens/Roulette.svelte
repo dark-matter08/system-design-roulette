@@ -38,6 +38,11 @@
 
 <div class="roulette blueprint">
   <ClusterBar route="topic-selector" status="weighted-random · no repeats until pool drains" tone="ok" />
+  {#if !app.session?.locked}
+    <div class="back-row">
+      <button class="ghost mono-ghost" onclick={() => app.leaveSession()}>← back — resume later</button>
+    </div>
+  {/if}
   {#if !data}
     <div class="center"><StatusLED tone="pending" label="loading pool…" /></div>
   {:else}
@@ -86,6 +91,9 @@
     display: flex;
     align-items: center;
     justify-content: center;
+  }
+  .back-row {
+    padding: 12px 18px 0;
   }
   .roulette-body {
     flex: 1;
