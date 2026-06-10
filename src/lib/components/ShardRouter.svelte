@@ -1,10 +1,11 @@
 <script lang="ts">
   /**
-   * Topic selection as request routing — replaces the casino wheel.
-   * The unlocked pool is a rack of shard cards; "spinning" dispatches a
-   * request whose scanner cursor hops across the rack, decelerating until it
-   * lands on the (pre-decided) shard. Locked topics render as greyed
-   * provisioning stubs so the rack visibly grows with the curriculum.
+   * Topic selection as a LEADER ELECTION over the shard rack — the gamified
+   * replacement for the casino wheel. Dispatch starts an election: shards are
+   * eliminated round by round (✗ 503, red LED) while the term counter climbs;
+   * the last two duel under an alternating scanner; the survivor is elected
+   * as today's topic. The winner is pre-decided (chosenIndex) — the election
+   * is theater with a guaranteed outcome, exactly like the wheel was.
    */
   let {
     pool,
@@ -13,86 +14,109 @@
     onLanded,
   }: { pool: string[]; chosenIndex: number; lockedCount?: number; onLanded: () => void } = $props();
 
-  let cursor = $state(-1); // card currently under the scanner
-  let landedIdx = $state(-1);
-  let dispatching = $state(false);
-  let pings = $state<Set<number>>(new Set()); // cards recently scanned (LED afterglow)
+  type ShardState = 'in' | 'out' | 'scan' | 'winner';
+  let states = $state<ShardState[]>(pool.map(() => 'in'));
+  let term = $state(0);
+  let phase = $state<'idle' | 'election' | 'duel' | 'done'>('idle');
+  let burst = $state(false); // packet-burst celebration on the winner
 
   export function spin() {
-    if (dispatching || landedIdx >= 0) return;
-    dispatching = true;
-    // Hop schedule: fast scan easing out, guaranteed to end on chosenIndex.
-    const hops: number[] = [];
-    let interval = 70;
-    let t = 0;
-    const times: number[] = [];
-    while (interval < 620) {
+    if (phase !== 'idle') return;
+    phase = 'election';
+
+    // Elimination order: everyone except the chosen, shuffled.
+    const losers = pool.map((_, i) => i).filter((i) => i !== chosenIndex);
+    for (let i = losers.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [losers[i], losers[j]] = [losers[j], losers[i]];
+    }
+    const finalist = losers.pop()!; // survives until the duel
+
+    // Schedule eliminations: quick early, slowing as the field thins.
+    let t = 600;
+    losers.forEach((idx, k) => {
+      const interval = 240 + (k / Math.max(losers.length - 1, 1)) * 420;
       t += interval;
-      times.push(t);
-      interval *= 1.13;
-    }
-    let prev = -1;
-    for (let i = 0; i < times.length; i++) {
-      let next: number;
-      if (i >= times.length - 3) {
-        // Final approach: neighbors of the target, then the target itself.
-        next = i === times.length - 1 ? chosenIndex : (chosenIndex + (times.length - 1 - i)) % pool.length;
-      } else {
-        do {
-          next = Math.floor(Math.random() * pool.length);
-        } while (next === prev && pool.length > 1);
-      }
-      hops.push(next);
-      prev = next;
-    }
-    hops.forEach((idx, i) => {
+      const myTerm = k + 1;
       setTimeout(() => {
-        cursor = idx;
-        pings = new Set([...pings, idx]);
-        setTimeout(() => {
-          pings.delete(idx);
-          pings = new Set(pings);
-        }, 350);
-        if (i === hops.length - 1) {
-          setTimeout(() => {
-            landedIdx = idx;
-            dispatching = false;
-            onLanded();
-          }, 450);
-        }
-      }, times[i]);
+        states[idx] = 'out';
+        term = myTerm;
+      }, t);
     });
+
+    // The duel: scanner alternates between the last two, slowing, then the
+    // rival drops and the chosen shard takes the crown.
+    t += 700;
+    const duelStart = t;
+    const flips = 7;
+    setTimeout(() => (phase = 'duel'), duelStart - 400);
+    for (let f = 0; f < flips; f++) {
+      t += 260 + f * 110;
+      const who = f % 2 === 0 ? chosenIndex : finalist;
+      const other = f % 2 === 0 ? finalist : chosenIndex;
+      setTimeout(() => {
+        states[who] = 'scan';
+        states[other] = 'in';
+      }, t);
+    }
+    t += 650;
+    setTimeout(() => {
+      states[finalist] = 'out';
+      states[chosenIndex] = 'winner';
+      term += 1;
+      phase = 'done';
+      burst = true;
+      setTimeout(() => (burst = false), 1400);
+      setTimeout(onLanded, 500);
+    }, t);
   }
 
+  const remaining = $derived(states.filter((s) => s !== 'out').length);
   const stubCount = $derived(Math.min(lockedCount, 6));
 </script>
 
 <div class="router">
-  <div class="ingress mono" class:active={dispatching}>
-    <span class="ing-label">{dispatching ? '⇣ routing request' : landedIdx >= 0 ? '⇣ routed' : '⇣ request queued'}</span>
+  <div class="ingress mono" class:active={phase === 'election' || phase === 'duel'}>
+    {#if phase === 'idle'}
+      <span class="ing-label">⇣ {pool.length} shards standing for election</span>
+    {:else if phase === 'duel'}
+      <span class="ing-label duel">⚡ FINAL ROUND — TERM {term} · 2 candidates</span>
+    {:else if phase === 'done'}
+      <span class="ing-label done">★ LEADER ELECTED — TERM {term}</span>
+    {:else}
+      <span class="ing-label live">⚡ ELECTION — TERM {term} · {remaining} candidates remain</span>
+    {/if}
     <svg class="ing-pipe" viewBox="0 0 100 26" preserveAspectRatio="none" aria-hidden="true">
       <path d="M 50 0 L 50 26" />
     </svg>
   </div>
 
-  <div class="rack" class:landed={landedIdx >= 0}>
+  <div class="rack">
     {#each pool as title, i}
       <div
         class="shard mono"
-        class:scan={cursor === i && landedIdx < 0}
-        class:ping={pings.has(i)}
-        class:hit={landedIdx === i}
-        class:dim={landedIdx >= 0 && landedIdx !== i}
+        class:out={states[i] === 'out'}
+        class:scan={states[i] === 'scan'}
+        class:winner={states[i] === 'winner'}
       >
+        {#if states[i] === 'winner' && burst}
+          <div class="burst" aria-hidden="true">
+            {#each Array(10) as _, p}
+              <span class="pdot" style="--a: {p * 36}deg; --d: {28 + (p % 3) * 12}px"></span>
+            {/each}
+          </div>
+        {/if}
         <div class="shard-top">
           <span class="led"></span>
           <span class="sid">shard-{String(i).padStart(2, '0')}</span>
+          {#if states[i] === 'out'}<span class="verdict">✗ 503</span>{/if}
+          {#if states[i] === 'winner'}<span class="verdict win">★ leader</span>{/if}
         </div>
         <div class="stitle">{title}</div>
       </div>
     {/each}
     {#each Array(stubCount) as _, i}
-      <div class="shard stub mono" class:dim={landedIdx >= 0}>
+      <div class="shard stub mono" class:out={phase === 'done'}>
         <div class="shard-top">
           <span class="led idle"></span>
           <span class="sid">shard-{String(pool.length + i).padStart(2, '0')}</span>
@@ -115,6 +139,7 @@
     flex-direction: column;
     align-items: center;
     gap: 2px;
+    min-height: 40px;
   }
   .ing-label {
     font-size: 10px;
@@ -122,8 +147,15 @@
     text-transform: uppercase;
     color: var(--faint);
   }
-  .ingress.active .ing-label {
+  .ing-label.live {
     color: var(--accent);
+  }
+  .ing-label.duel {
+    color: var(--led-warn);
+    animation: led-pulse 0.5s ease infinite;
+  }
+  .ing-label.done {
+    color: var(--led-ok);
   }
   .ing-pipe {
     width: 60px;
@@ -151,11 +183,12 @@
     margin-top: 8px;
   }
   .shard {
+    position: relative;
     background: var(--node-bg);
     border: 1px solid var(--node-border);
     border-radius: 8px;
     padding: 9px 12px 10px;
-    transition: border-color 0.12s ease, background 0.12s ease, opacity 0.4s ease, transform 0.25s ease;
+    transition: border-color 0.12s ease, background 0.12s ease, opacity 0.45s ease, transform 0.3s ease;
     min-height: 62px;
   }
   .shard-top {
@@ -168,8 +201,9 @@
     width: 6px;
     height: 6px;
     border-radius: 50%;
-    background: var(--led-idle);
+    background: var(--led-ok);
     transition: background 0.15s ease, box-shadow 0.15s ease;
+    flex-shrink: 0;
   }
   .sid {
     font-size: 8.5px;
@@ -177,45 +211,104 @@
     color: var(--faint);
     text-transform: uppercase;
   }
+  .verdict {
+    margin-left: auto;
+    font-size: 8.5px;
+    letter-spacing: 1px;
+    color: var(--led-err);
+  }
+  .verdict.win {
+    color: var(--accent);
+  }
   .stitle {
     font-size: 11.5px;
     color: var(--muted);
     line-height: 1.4;
   }
-  /* scanner states */
+  /* election states */
+  .shard.out {
+    opacity: 0.28;
+    transform: scale(0.97);
+    border-color: #3a2228;
+    animation: knocked 0.3s ease;
+  }
+  .shard.out .led {
+    background: var(--led-err);
+  }
+  .shard.out .stitle {
+    text-decoration: line-through;
+    text-decoration-color: var(--led-err);
+  }
+  @keyframes knocked {
+    0% {
+      transform: translateX(0) scale(1);
+    }
+    30% {
+      transform: translateX(-4px) scale(1);
+    }
+    60% {
+      transform: translateX(3px) scale(0.99);
+    }
+    100% {
+      transform: translateX(0) scale(0.97);
+    }
+  }
   .shard.scan {
-    border-color: var(--accent);
+    border-color: var(--led-warn);
     background: var(--surface-2);
+    transform: scale(1.03);
   }
   .shard.scan .led {
-    background: var(--accent);
-    box-shadow: 0 0 8px var(--accent);
-  }
-  .shard.ping .led {
     background: var(--led-warn);
+    box-shadow: 0 0 8px var(--led-warn);
   }
-  .shard.hit {
+  .shard.winner {
     border-color: var(--accent);
     background: var(--surface-2);
-    transform: scale(1.045);
-    box-shadow: 0 0 0 1px var(--accent), 0 8px 32px rgba(239, 159, 39, 0.18);
+    transform: scale(1.06);
+    box-shadow: 0 0 0 1px var(--accent), 0 8px 36px rgba(239, 159, 39, 0.22);
   }
-  .shard.hit .led {
+  .shard.winner .led {
     background: var(--led-ok);
     box-shadow: 0 0 8px var(--led-ok);
   }
-  .shard.hit .stitle {
+  .shard.winner .stitle {
     color: var(--fg);
   }
-  .shard.hit .sid {
+  .shard.winner .sid {
     color: var(--accent);
   }
-  .shard.dim {
-    opacity: 0.32;
+  /* packet-burst celebration */
+  .burst {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+  }
+  .pdot {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: var(--accent);
+    animation: burst-fly 1.1s ease-out forwards;
+    transform: rotate(var(--a)) translateX(0);
+  }
+  @keyframes burst-fly {
+    to {
+      transform: rotate(var(--a)) translateX(calc(var(--d) + 70px));
+      opacity: 0;
+    }
   }
   .shard.stub {
     border-style: dashed;
     background: transparent;
+  }
+  .shard.stub.out {
+    opacity: 0.28;
+    transform: none;
+    animation: none;
   }
   .shard.stub .stitle {
     color: var(--faint);

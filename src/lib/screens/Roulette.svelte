@@ -54,9 +54,9 @@
         onLanded={landed}
       />
       {#if phase === 'ready'}
-        <button class="cta mono-cta" onclick={spin}>⇢ dispatch request</button>
+        <button class="cta mono-cta" onclick={spin}>⚡ run leader election</button>
       {:else if phase === 'spinning'}
-        <div class="mono dim">routing…</div>
+        <div class="mono dim">electing…</div>
       {:else if phase === 'landed'}
         <h1 class="topic">{data.concept_title}</h1>
         <MetaBadge tone="violet">{#snippet children()}shard: {data?.concept_category}{/snippet}</MetaBadge>
