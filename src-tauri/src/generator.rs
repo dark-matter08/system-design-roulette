@@ -117,7 +117,7 @@ impl Generator {
             .replace("{{TITLE}}", title)
             .replace("{{CATEGORY}}", category);
         match self
-            .run_with_fallback::<GeneratedCourse>(&prompt, true, Duration::from_secs(480))
+            .run_with_fallback::<GeneratedCourse>(&prompt, true, Duration::from_secs(720))
             .await
         {
             Ok((course, source)) => Ok((course, source)),
@@ -299,6 +299,14 @@ async fn run_capture(mut cmd: Command, timeout: Duration) -> Result<String> {
 pub fn parse_json_payload<T: serde::de::DeserializeOwned>(raw: &str) -> Result<T> {
     if let Some(start) = raw.find("```json") {
         let after = &raw[start + 7..];
+        // Use the LAST closing fence: course markdown legitimately contains
+        // embedded ``` blocks inside the JSON string.
+        if let Some(end) = after.rfind("```") {
+            let candidate = after[..end].trim();
+            if let Ok(v) = serde_json::from_str::<T>(candidate) {
+                return Ok(v);
+            }
+        }
         if let Some(end) = after.find("```") {
             let candidate = after[..end].trim();
             if let Ok(v) = serde_json::from_str::<T>(candidate) {

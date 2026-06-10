@@ -135,3 +135,14 @@ fn json_payload_parser_handles_fenced_and_prose() {
     let bare = "prefix {\"x\": 7} suffix";
     assert_eq!(system_design_roulette_lib::generator::parse_json_payload::<T>(bare).unwrap().x, 7);
 }
+
+#[test]
+fn json_parser_survives_embedded_code_fences_in_markdown() {
+    // Real failure mode: course markdown contains ``` blocks inside the JSON string,
+    // so the first closing fence is NOT the end of the payload.
+    #[derive(serde::Deserialize)]
+    struct Course { markdown: String }
+    let raw = "```json\n{\"markdown\": \"intro\\n```\\ncode here\\n```\\noutro\"}\n```";
+    let c = system_design_roulette_lib::generator::parse_json_payload::<Course>(raw).unwrap();
+    assert!(c.markdown.contains("code here"));
+}
