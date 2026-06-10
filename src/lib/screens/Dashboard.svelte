@@ -17,6 +17,22 @@
   function scoreLabel(s: number | null): string {
     return s == null ? '—' : Math.round(s * 100) + '%';
   }
+
+  /** Last 16 weeks as columns of 7 days, GitHub-style. */
+  const heatmap = $derived.by(() => {
+    const byDate = new Map((data?.history ?? []).map((h) => [h.date, h.status]));
+    const today = new Date();
+    const cells: { date: string; status: string }[] = [];
+    for (let i = 16 * 7 - 1; i >= 0; i--) {
+      const d = new Date(today);
+      d.setDate(d.getDate() - i);
+      const key = d.toISOString().slice(0, 10);
+      cells.push({ date: key, status: byDate.get(key) ?? 'none' });
+    }
+    const weeks: { date: string; status: string }[][] = [];
+    for (let w = 0; w < 16; w++) weeks.push(cells.slice(w * 7, w * 7 + 7));
+    return weeks;
+  });
 </script>
 
 <div class="dash-wrap">
@@ -45,6 +61,20 @@
           <span class="lab">topics covered</span>
         </div>
         <div class="stat"><span class="num">{data.carryover_due}</span><span class="lab">questions returning</span></div>
+      </div>
+      <div class="heatmap" aria-label="last 16 weeks of sessions">
+        {#each heatmap as week}
+          <div class="hm-col">
+            {#each week as cell}
+              <div
+                class="hm-cell"
+                class:done={cell.status === 'completed'}
+                class:skip={cell.status === 'skipped'}
+                title="{cell.date}: {cell.status === 'none' ? 'no session' : cell.status}"
+              ></div>
+            {/each}
+          </div>
+        {/each}
       </div>
       <div class="dash-body">
         <table class="history">
@@ -132,6 +162,29 @@
     flex: 1;
     overflow-y: auto;
     min-height: 0;
+  }
+  .heatmap {
+    display: flex;
+    gap: 3px;
+  }
+  .hm-col {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+  }
+  .hm-cell {
+    width: 13px;
+    height: 13px;
+    border-radius: 3px;
+    background: var(--surface);
+  }
+  .hm-cell.done {
+    background: var(--accent);
+  }
+  .hm-cell.skip {
+    background: var(--bad-bg);
+    border: 1px solid var(--bad-fg);
+    box-sizing: border-box;
   }
   .history {
     width: 100%;

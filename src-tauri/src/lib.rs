@@ -15,6 +15,9 @@ use tauri::{Emitter, Manager};
 const SEED_CONCEPTS: &str = include_str!("../seed/concepts.json");
 
 fn resolve_claude_bin() -> String {
+    if let Ok(p) = std::env::var("SDR_CLAUDE_BIN") {
+        return p;
+    }
     let home = std::env::var("HOME").unwrap_or_default();
     let candidates = [
         format!("{home}/.local/bin/claude"),
@@ -30,6 +33,11 @@ fn resolve_claude_bin() -> String {
 }
 
 fn resolve_codex_bin(conn: &rusqlite::Connection) -> Option<String> {
+    match std::env::var("SDR_CODEX_BIN").as_deref() {
+        Ok("none") => return None,
+        Ok(p) => return Some(p.to_string()),
+        _ => {}
+    }
     if let Ok(Some(saved)) = db::get_config(conn, "codex_bin") {
         if std::path::Path::new(&saved).exists() {
             return Some(saved);
@@ -110,10 +118,7 @@ pub fn run() {
                     let state = handle.state::<AppState>();
                     if session::session_owed(&state) && !state.locked.load(Ordering::SeqCst) {
                         let _ = handle.emit("session:owed", true);
-                        if let Some(w) = handle.get_webview_window("main") {
-                            let _ = w.show();
-                            let _ = w.set_focus();
-                        }
+                        kiosk::engage(&handle, &state);
                     }
                 }
             });
@@ -126,6 +131,7 @@ pub fn run() {
                     let state = handle.state::<AppState>();
                     if session::session_owed(&state) {
                         let _ = handle.emit("session:owed", true);
+                        kiosk::engage(&handle, &state);
                     }
                     // Kick the pregen queue on every triggered launch (wake catch-up).
                     state.gen_notify.notify_one();

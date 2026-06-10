@@ -18,8 +18,18 @@
     wheel?.spin();
   }
 
+  let confetti = $state<{ x: number; delay: number; color: string; drift: number }[]>([]);
+
   async function landed() {
     phase = 'landed';
+    const colors = ['#ef9f27', '#9fe1cb', '#f0997b', '#cecbf6', '#fac775'];
+    confetti = Array.from({ length: 60 }, (_, i) => ({
+      x: Math.random() * 100,
+      delay: Math.random() * 0.6,
+      drift: (Math.random() - 0.5) * 200,
+      color: colors[i % colors.length],
+    }));
+    setTimeout(() => (confetti = []), 3500);
   }
 
   async function toCourse() {
@@ -36,6 +46,12 @@
 </script>
 
 <div class="screen">
+  {#each confetti as c}
+    <span
+      class="confetti"
+      style="left: {c.x}%; animation-delay: {c.delay}s; background: {c.color}; --drift: {c.drift}px;"
+    ></span>
+  {/each}
   {#if !data}
     <p class="sub">Preparing the wheel…</p>
   {:else}
@@ -96,6 +112,22 @@
   @keyframes spin {
     to {
       transform: rotate(360deg);
+    }
+  }
+  .confetti {
+    position: fixed;
+    top: -12px;
+    width: 9px;
+    height: 9px;
+    border-radius: 2px;
+    pointer-events: none;
+    animation: confetti-fall 2.8s ease-in forwards;
+    z-index: 40;
+  }
+  @keyframes confetti-fall {
+    to {
+      transform: translateY(105vh) translateX(var(--drift)) rotate(720deg);
+      opacity: 0.7;
     }
   }
 </style>

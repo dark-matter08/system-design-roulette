@@ -8,6 +8,24 @@
   const minute = $derived(app.state?.schedule_minute ?? 0);
 
   let countdown = $state('');
+  let editing = $state(false);
+  let saved = $state(false);
+  let newTime = $state('09:00');
+
+  $effect(() => {
+    newTime = `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
+  });
+
+  async function saveTime() {
+    const [h, m] = newTime.split(':').map(Number);
+    await api.updateSchedule(h, m);
+    saved = true;
+    setTimeout(() => {
+      saved = false;
+      editing = false;
+    }, 1200);
+    await app.refresh();
+  }
 
   $effect(() => {
     const tick = () => {
@@ -51,7 +69,14 @@
     <div class="actions">
       <button class="ghost" onclick={() => (app.screen = 'dashboard')}>history & stats</button>
       <button class="ghost" onclick={begin}>start early</button>
+      <button class="ghost" onclick={() => (editing = !editing)}>change time</button>
     </div>
+    {#if editing}
+      <div class="edit-row">
+        <input type="time" bind:value={newTime} style="width: 140px;" />
+        <button class="ghost" onclick={saveTime}>{saved ? 'saved ✓' : 'save'}</button>
+      </div>
+    {/if}
   {/if}
 </div>
 
@@ -75,5 +100,11 @@
   .actions {
     display: flex;
     gap: 12px;
+  }
+  .edit-row {
+    display: flex;
+    gap: 10px;
+    margin-top: 16px;
+    align-items: center;
   }
 </style>

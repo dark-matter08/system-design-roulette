@@ -89,18 +89,32 @@ pub fn engage(app: &AppHandle, state: &AppState) {
     #[cfg(target_os = "macos")]
     {
         let win = window.clone();
-        let _ = window.run_on_main_thread(move || unsafe {
-            if let Ok(ptr) = win.ns_window() {
-                mac::raise_window(ptr as *mut objc2::runtime::AnyObject);
+        let _ = window.run_on_main_thread(move || {
+            // Activate first: presentation options only apply (and may throw)
+            // when set by the active application.
+            let r = objc2::exception::catch(std::panic::AssertUnwindSafe(|| unsafe {
+                mac::activate_self();
+                if let Ok(ptr) = win.ns_window() {
+                    mac::raise_window(ptr as *mut objc2::runtime::AnyObject);
+                }
+            }));
+            if let Err(e) = r {
+                log::error!("kiosk raise failed: {e:?}");
             }
-            mac::set_presentation_options(
-                mac::HIDE_DOCK
-                    | mac::HIDE_MENU_BAR
-                    | mac::DISABLE_PROCESS_SWITCHING
-                    | mac::DISABLE_FORCE_QUIT
-                    | mac::DISABLE_SESSION_TERMINATION
-                    | mac::DISABLE_HIDE_APPLICATION,
-            );
+            let r = objc2::exception::catch(std::panic::AssertUnwindSafe(|| unsafe {
+                mac::set_presentation_options(
+                    mac::HIDE_DOCK
+                        | mac::HIDE_MENU_BAR
+                        | mac::DISABLE_PROCESS_SWITCHING
+                        | mac::DISABLE_FORCE_QUIT
+                        | mac::DISABLE_SESSION_TERMINATION
+                        | mac::DISABLE_HIDE_APPLICATION,
+                );
+            }));
+            if let Err(e) = r {
+                log::error!("kiosk presentation options failed: {e:?}");
+            }
+            log::info!("kiosk engaged");
         });
     }
 
@@ -126,15 +140,19 @@ pub fn engage(app: &AppHandle, state: &AppState) {
             #[cfg(target_os = "macos")]
             {
                 let win = window.clone();
-                let _ = app2.run_on_main_thread(move || unsafe {
-                    let front = mac::frontmost_pid();
-                    if front != my_pid {
-                        mac::activate_self();
-                        if let Ok(ptr) = win.ns_window() {
-                            mac::raise_window(ptr as *mut objc2::runtime::AnyObject);
+                let _ = app2.run_on_main_thread(move || {
+                    let _ = objc2::exception::catch(std::panic::AssertUnwindSafe(|| unsafe {
+                        let front = mac::frontmost_pid();
+                        let visible = win.is_visible().unwrap_or(false);
+                        if front != my_pid || !visible {
+                            let _ = win.show();
+                            mac::activate_self();
+                            if let Ok(ptr) = win.ns_window() {
+                                mac::raise_window(ptr as *mut objc2::runtime::AnyObject);
+                            }
+                            let _ = win.set_focus();
                         }
-                        let _ = win.set_focus();
-                    }
+                    }));
                 });
             }
             #[cfg(not(target_os = "macos"))]

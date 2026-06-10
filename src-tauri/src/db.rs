@@ -464,8 +464,10 @@ pub struct HistoryEntry {
 
 pub fn history(conn: &Connection, limit: i64) -> Result<Vec<HistoryEntry>> {
     let mut stmt = conn.prepare(
-        "SELECT s.date, s.status, s.quiz_score, c.title
+        "SELECT s.date, s.status, s.quiz_score,
+                CASE WHEN s.status = 'pending' THEN NULL ELSE c.title END
          FROM sessions s LEFT JOIN concepts c ON c.id = s.concept_id
+         WHERE s.status != 'pending' OR s.date <= date('now', 'localtime')
          ORDER BY s.date DESC LIMIT ?1",
     )?;
     let rows = stmt.query_map(params![limit], |r| {

@@ -7,7 +7,7 @@ Requirements:
 - Write a course readable in roughly 30 minutes (3500-4500 words of markdown).
 - Structure: ## Why this matters → ## Core mechanics (the meat — go deep, with concrete numbers and small ASCII diagrams where useful) → ## Trade-offs and failure modes → ## Real-world example (how a well-known system actually does this) → ## Interview framing (how to present this in a system design interview) → ## Key takeaways.
 - Tone: direct, technical, no fluff. Assume the reader codes daily but has gaps in distributed systems theory.
-- Use WebSearch to find 4 to 6 high-quality, real, currently-live resources (engineering blog posts, papers, talks, docs) about this topic. Verify each URL resolves with WebFetch before including it. Do not invent URLs.
+- Use WebSearch to find 4 to 6 high-quality, real resources (engineering blog posts, papers, talks, docs) about this topic. Only include URLs that appeared in your search results — never invent or guess a URL. Keep research brief: a few searches, no exhaustive verification.
 
 Your entire final reply must be exactly one fenced JSON code block (```json ... ```) matching this schema, with no text before or after it:
 {

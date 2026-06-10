@@ -212,6 +212,7 @@ impl Generator {
     async fn run_claude(&self, prompt: &str, web_tools: bool, timeout: Duration) -> Result<String> {
         let mut cmd = Command::new(&self.claude_bin);
         cmd.arg("-p")
+            .arg(prompt)
             .arg("--output-format")
             .arg("json")
             .arg("--model")
@@ -223,12 +224,9 @@ impl Generator {
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
         if web_tools {
-            cmd.arg("--allowedTools").arg("WebSearch WebFetch");
-        } else {
-            cmd.arg("--allowedTools").arg("");
+            cmd.arg("--allowedTools").arg("WebSearch,WebFetch");
         }
-        cmd.arg("--disallowedTools").arg("Bash Edit Write NotebookEdit");
-        cmd.arg(prompt);
+        cmd.arg("--disallowedTools").arg("Bash,Edit,Write,NotebookEdit");
         let raw = run_capture(cmd, timeout).await?;
         // claude --output-format json wraps the reply in {"result": "..."} among other fields
         if let Ok(envelope) = serde_json::from_str::<serde_json::Value>(&raw) {

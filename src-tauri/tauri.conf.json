@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "system-design-roulette",
+  "productName": "System Design Roulette",
   "version": "0.1.0",
   "identifier": "com.darkmatter.system-design-roulette",
   "build": {
@@ -12,9 +12,9 @@
   "app": {
     "windows": [
       {
-        "title": "system-design-roulette",
-        "width": 800,
-        "height": 600
+        "title": "System Design Roulette",
+        "width": 1100,
+        "height": 760
       }
     ],
     "security": {
