@@ -161,9 +161,15 @@ Useful flags and env vars:
 | `SDR_DATE=2026-06-12` | Override "today" — simulate multi-day carryover flows |
 | `SDR_CLAUDE_BIN=/path` | Override the claude binary (point at `/nonexistent` to test fallbacks) |
 | `SDR_CODEX_BIN=none` | Disable the codex fallback |
+| `SDR_MODEL=sonnet` | Override the course-generation model (default: `opus`, falls back to `sonnet` on retry) |
+| `SDR_SESSION_TYPE=pop_quiz` | Force tomorrow's planned session type (skips the planner call) |
 | `touch ~/sdr-unlock` | Instantly release the kiosk lock |
 
-Demo mode: opening the frontend in a plain browser (no Tauri) automatically serves canned data from `src/lib/mock.ts` — every screen is reachable (`?step=done`, `?setup`) without the Rust backend. That's how the screenshots in this README were taken.
+Demo mode: opening the frontend in a plain browser (no Tauri) automatically serves canned data from `src/lib/mock.ts` — every screen is reachable (`?step=done`, `?setup`, `?step=quiz&type=pop_quiz`) without the Rust backend. That's how the screenshots in this README were taken.
+
+## The Teacher
+
+The generation layer is a persistent teaching agent — see [docs/TEACHER.md](docs/TEACHER.md) for the full spec. In short: a per-concept **mastery ledger** (unseen → introduced → practicing → mastered → maintenance, with struggling/decayed detours) is compiled into a one-page **dossier** prepended to every agent call, so each course builds on what you know and attacks recorded misconceptions. The grader writes private **teacher notes** per concept that resurface next encounter. The wheel is a **progressive curriculum** — concepts unlock when ~70% of their prerequisites have been quizzed, so the pool grows from ~14 fundamentals to all 72 topics. A **nightly planner** occasionally schedules a pop-quiz audit day instead of a lesson, and after any completed session you can voluntarily **extend** with one more topic (no lock).
 
 ## Roadmap
 
