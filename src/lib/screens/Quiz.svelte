@@ -15,6 +15,7 @@
 
   const current = $derived(questions[idx]);
   const progress = $derived(questions.length ? (idx / questions.length) * 100 : 0);
+  const isAudit = $derived(app.session?.session_type === 'pop_quiz');
 
   $effect(() => {
     api.getQuiz().then((qs) => {
@@ -44,7 +45,11 @@
 </script>
 
 <div class="quiz-wrap blueprint">
-  <ClusterBar route="quiz" status="session locked" tone="warn" />
+  <ClusterBar
+    route={isAudit ? 'audit' : 'quiz'}
+    status={isAudit ? 'surprise compliance check · no new topic today' : 'session locked'}
+    tone="warn"
+  />
   {#if loading}
     <div class="center"><StatusLED tone="pending" label="loading requests…" /></div>
   {:else if grading}
@@ -56,6 +61,9 @@
     <div class="quiz-body">
       <div class="progress-track"><div class="progress-fill" style="width: {progress}%"></div></div>
       <div class="spacer"></div>
+      {#if isAudit && app.session?.plan_reason}
+        <div class="audit-note mono">⚡ POP QUIZ — {app.session.plan_reason}</div>
+      {/if}
       <NodeCard
         icon="⇣"
         name={`incoming request — POST /quiz/${idx + 1} of ${questions.length}`}
@@ -125,6 +133,16 @@
   }
   .spacer {
     height: 18px;
+  }
+  .audit-note {
+    font-size: 11px;
+    color: var(--violet-fg);
+    background: var(--violet-bg);
+    border: 1px dashed var(--violet);
+    border-radius: 6px;
+    padding: 7px 12px;
+    margin-bottom: 14px;
+    align-self: flex-start;
   }
   .dlq-note {
     font-size: 11px;

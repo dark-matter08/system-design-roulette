@@ -81,6 +81,13 @@ pub struct Verdicts {
     pub verdicts: Vec<Verdict>,
 }
 
+#[derive(Debug, Clone, Deserialize)]
+pub struct SessionPlan {
+    pub session_type: String,
+    #[serde(default)]
+    pub reason: String,
+}
+
 #[derive(Clone)]
 pub struct Generator {
     pub claude_bin: String,
@@ -95,6 +102,7 @@ pub const COURSE_PROMPT: &str = include_str!("../prompts/course.txt");
 pub const QUIZ_PROMPT: &str = include_str!("../prompts/quiz.txt");
 pub const GRADE_PROMPT: &str = include_str!("../prompts/grade.txt");
 pub const TEACHER_PROMPT: &str = include_str!("../prompts/teacher.txt");
+pub const PLAN_PROMPT: &str = include_str!("../prompts/plan.txt");
 
 /// Model for quiz/grade/repair calls regardless of the configured primary.
 const SMALL_MODEL: &str = "sonnet";
@@ -180,6 +188,26 @@ impl Generator {
                 log::warn!("quiz generation failed entirely, using bundled fallback: {e}");
                 let fb = pick_fallback("");
                 Ok((fb.questions, "fallback".into()))
+            }
+        }
+    }
+
+    /// Ask the Teacher to choose tomorrow's session type. `eligible` describes
+    /// whether pop_quiz is currently allowed (guardrails re-checked by caller).
+    /// Failure falls back to a lesson day — planning can never block.
+    pub async fn plan_day(&self, dossier: &str, eligible: bool) -> SessionPlan {
+        let prompt = with_teacher(
+            dossier,
+            &PLAN_PROMPT.replace("{{ELIGIBLE}}", if eligible { "yes" } else { "no" }),
+        );
+        match self
+            .run_with_fallback::<SessionPlan>(&prompt, false, Duration::from_secs(90), SMALL_MODEL)
+            .await
+        {
+            Ok((plan, _)) => plan,
+            Err(e) => {
+                log::warn!("day planning failed, defaulting to lesson: {e}");
+                SessionPlan { session_type: "lesson".into(), reason: String::new() }
             }
         }
     }

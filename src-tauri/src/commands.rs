@@ -133,7 +133,7 @@ pub fn get_quiz(state: State<'_, AppState>) -> CmdResult<Vec<QuizQuestionView>> 
     let yesterday = state.yesterday();
     let conn = state.db.0.lock().unwrap();
     let pending = pending_answers(&conn, &today);
-    let qs = db::quiz_for_date(&conn, &today, &yesterday).map_err(err)?;
+    let qs = session::questions_for_today(&conn, &today, &yesterday).map_err(err)?;
     Ok(qs
         .into_iter()
         .map(|q| {
@@ -209,7 +209,7 @@ pub async fn finish_quiz(app: AppHandle, state: State<'_, AppState>) -> CmdResul
 
     let (questions, pending, concept_of) = {
         let conn = state.db.0.lock().unwrap();
-        let qs = db::quiz_for_date(&conn, &today, &yesterday).map_err(err)?;
+        let qs = session::questions_for_today(&conn, &today, &yesterday).map_err(err)?;
         let pending = pending_answers(&conn, &today);
         // question_id -> (concept_id, concept_title), for grading context + mastery.
         let mut stmt = conn
@@ -403,7 +403,20 @@ pub struct RouletteView {
 
 #[tauri::command]
 pub fn finish_review(app: AppHandle, state: State<'_, AppState>) -> CmdResult<SessionView> {
-    session::set_step(&state, session::STEP_ROULETTE).map_err(err)?;
+    let is_pop = {
+        let today = state.today();
+        let conn = state.db.0.lock().unwrap();
+        db::get_session(&conn, &today)
+            .map_err(err)?
+            .map(|s| s.session_type == "pop_quiz")
+            .unwrap_or(false)
+    };
+    if is_pop {
+        // Pop-quiz day: the audit IS the session — no new topic, done after review.
+        session::complete_session(&app, &state).map_err(err)?;
+    } else {
+        session::set_step(&state, session::STEP_ROULETTE).map_err(err)?;
+    }
     let v = session::view(&state);
     let _ = app.emit("session:state", v.clone());
     Ok(v)

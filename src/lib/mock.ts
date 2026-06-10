@@ -106,6 +106,10 @@ function session(): SessionView {
     quiz_score: state.score,
     streak: 17,
     locked: state.status === 'in_progress',
+    // ?type=pop_quiz previews an audit day in the browser demo.
+    session_type: params.get('type') === 'pop_quiz' ? 'pop_quiz' : 'lesson',
+    plan_reason:
+      params.get('type') === 'pop_quiz' ? 'review debt: 4 topics due — surprise audit' : '',
   };
 }
 

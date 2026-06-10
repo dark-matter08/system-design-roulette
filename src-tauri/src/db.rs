@@ -37,6 +37,10 @@ pub struct Session {
     pub started_at: Option<String>,
     pub completed_at: Option<String>,
     pub reading_seconds: i64,
+    /// 'lesson' (default) or 'pop_quiz' — chosen by the nightly planner.
+    pub session_type: String,
+    /// Teacher's one-line reason for the chosen type (shown in UI).
+    pub plan_reason: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -96,7 +100,9 @@ CREATE TABLE IF NOT EXISTS sessions (
     quiz_score REAL,
     started_at TEXT,
     completed_at TEXT,
-    reading_seconds INTEGER NOT NULL DEFAULT 0
+    reading_seconds INTEGER NOT NULL DEFAULT 0,
+    session_type TEXT NOT NULL DEFAULT 'lesson',
+    plan_reason TEXT NOT NULL DEFAULT ''
 );
 CREATE TABLE IF NOT EXISTS courses (
     id INTEGER PRIMARY KEY,
@@ -173,6 +179,8 @@ pub fn open(path: &PathBuf) -> Result<Connection> {
     for ddl in [
         "ALTER TABLE concepts ADD COLUMN tier INTEGER NOT NULL DEFAULT 0",
         "ALTER TABLE concepts ADD COLUMN prereqs_json TEXT NOT NULL DEFAULT '[]'",
+        "ALTER TABLE sessions ADD COLUMN session_type TEXT NOT NULL DEFAULT 'lesson'",
+        "ALTER TABLE sessions ADD COLUMN plan_reason TEXT NOT NULL DEFAULT ''",
     ] {
         let _ = conn.execute_batch(ddl);
     }
@@ -228,7 +236,8 @@ pub fn set_config(conn: &Connection, key: &str, value: &str) -> Result<()> {
 
 pub fn get_session(conn: &Connection, date: &str) -> Result<Option<Session>> {
     let mut stmt = conn.prepare(
-        "SELECT date, concept_id, status, current_step, quiz_score, started_at, completed_at, reading_seconds
+        "SELECT date, concept_id, status, current_step, quiz_score, started_at, completed_at, reading_seconds,
+                session_type, plan_reason
          FROM sessions WHERE date = ?1",
     )?;
     let mut rows = stmt.query(params![date])?;
@@ -242,6 +251,8 @@ pub fn get_session(conn: &Connection, date: &str) -> Result<Option<Session>> {
             started_at: r.get(5)?,
             completed_at: r.get(6)?,
             reading_seconds: r.get(7)?,
+            session_type: r.get(8)?,
+            plan_reason: r.get(9)?,
         }),
         None => None,
     })
@@ -249,8 +260,8 @@ pub fn get_session(conn: &Connection, date: &str) -> Result<Option<Session>> {
 
 pub fn upsert_session(conn: &Connection, s: &Session) -> Result<()> {
     conn.execute(
-        "INSERT INTO sessions (date, concept_id, status, current_step, quiz_score, started_at, completed_at, reading_seconds)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+        "INSERT INTO sessions (date, concept_id, status, current_step, quiz_score, started_at, completed_at, reading_seconds, session_type, plan_reason)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
          ON CONFLICT(date) DO UPDATE SET
             concept_id = excluded.concept_id,
             status = excluded.status,
@@ -258,10 +269,13 @@ pub fn upsert_session(conn: &Connection, s: &Session) -> Result<()> {
             quiz_score = excluded.quiz_score,
             started_at = excluded.started_at,
             completed_at = excluded.completed_at,
-            reading_seconds = excluded.reading_seconds",
+            reading_seconds = excluded.reading_seconds,
+            session_type = excluded.session_type,
+            plan_reason = excluded.plan_reason",
         params![
             s.date, s.concept_id, s.status, s.current_step,
-            s.quiz_score, s.started_at, s.completed_at, s.reading_seconds
+            s.quiz_score, s.started_at, s.completed_at, s.reading_seconds,
+            s.session_type, s.plan_reason
         ],
     )?;
     Ok(())
@@ -366,6 +380,32 @@ pub fn quiz_for_date(conn: &Connection, date: &str, yesterday: &str) -> Result<V
         out.push(q?);
     }
     Ok(out)
+}
+
+/// Breadth sample for a pop-quiz day: previously-attempted questions from
+/// quizzed concepts, prioritizing struggling/decayed then review-due, random
+/// within a band. Excludes anything already in today's base set.
+pub fn pop_quiz_sample(conn: &Connection, date: &str, exclude: &[i64], limit: i64) -> Result<Vec<Question>> {
+    let exclude_csv = exclude.iter().map(|i| i.to_string()).collect::<Vec<_>>().join(",");
+    let sql = format!(
+        "SELECT q.id, q.course_id, q.prompt, q.kind, q.choices_json, q.correct_answer, q.explanation, q.origin
+         FROM questions q
+         JOIN courses co ON co.id = q.course_id
+         JOIN mastery m ON m.concept_id = co.concept_id
+         WHERE q.id IN (SELECT DISTINCT question_id FROM attempts)
+           AND q.id NOT IN (SELECT question_id FROM carryover)
+           {}
+         ORDER BY CASE
+             WHEN m.state IN ('struggling','decayed') THEN 0
+             WHEN m.next_review_date IS NOT NULL AND m.next_review_date <= ?1 THEN 1
+             ELSE 2 END,
+           RANDOM()
+         LIMIT ?2",
+        if exclude_csv.is_empty() { String::new() } else { format!("AND q.id NOT IN ({exclude_csv})") }
+    );
+    let mut stmt = conn.prepare(&sql)?;
+    let rows = stmt.query_map(params![date, limit], row_to_question)?;
+    Ok(rows.collect::<std::result::Result<Vec<_>, _>>()?)
 }
 
 pub fn record_attempt(conn: &Connection, a: &Attempt) -> Result<()> {

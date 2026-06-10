@@ -18,6 +18,8 @@ pub struct SessionView {
     pub quiz_score: Option<f64>,
     pub streak: i64,
     pub locked: bool,
+    pub session_type: String,
+    pub plan_reason: String,
 }
 
 pub fn now_iso() -> String {
@@ -74,9 +76,59 @@ pub fn ensure_today_session(state: &AppState) -> db::Result<Session> {
         started_at: None,
         completed_at: None,
         reading_seconds: 0,
+        session_type: "lesson".into(),
+        plan_reason: String::new(),
     };
     db::upsert_session(&conn, &s)?;
     Ok(s)
+}
+
+/// Target size for a pop-quiz day's question set.
+const POP_QUIZ_SIZE: i64 = 12;
+
+fn pop_quiz_key(date: &str) -> String {
+    format!("pop_quiz_set:{date}")
+}
+
+/// Today's question set, honoring the session type. For pop-quiz days the
+/// sampled set is frozen in config at session start so resume mid-quiz is
+/// deterministic; lesson days use carryover + yesterday's fresh questions.
+pub fn questions_for_today(
+    conn: &rusqlite::Connection,
+    today: &str,
+    yesterday: &str,
+) -> db::Result<Vec<db::Question>> {
+    let is_pop = db::get_session(conn, today)?
+        .map(|s| s.session_type == "pop_quiz")
+        .unwrap_or(false);
+    if is_pop {
+        if let Ok(Some(ids_json)) = db::get_config(conn, &pop_quiz_key(today)) {
+            let ids: Vec<i64> = serde_json::from_str(&ids_json).unwrap_or_default();
+            let mut out = Vec::new();
+            for id in ids {
+                let mut stmt = conn.prepare(
+                    "SELECT id, course_id, prompt, kind, choices_json, correct_answer, explanation,
+                            CASE WHEN id IN (SELECT question_id FROM carryover) THEN 'carryover' ELSE origin END
+                     FROM questions WHERE id = ?1",
+                )?;
+                let mut rows = stmt.query([id])?;
+                if let Some(r) = rows.next()? {
+                    out.push(db::Question {
+                        id: r.get(0)?,
+                        course_id: r.get(1)?,
+                        prompt: r.get(2)?,
+                        kind: r.get(3)?,
+                        choices_json: r.get(4)?,
+                        correct_answer: r.get(5)?,
+                        explanation: r.get(6)?,
+                        origin: r.get(7)?,
+                    });
+                }
+            }
+            return Ok(out);
+        }
+    }
+    db::quiz_for_date(conn, today, yesterday)
 }
 
 /// Begin (or resume) today's session: pick the right starting step.
@@ -89,8 +141,27 @@ pub fn start_session(state: &AppState) -> db::Result<Session> {
     let yesterday = state.yesterday();
     let conn = state.db.0.lock().unwrap();
     if s.status == "pending" {
-        // No quiz available (day 1, or nothing generated yesterday) -> straight to roulette.
-        let quiz = db::quiz_for_date(&conn, &today, &yesterday)?;
+        if s.session_type == "pop_quiz" {
+            // Freeze the audit set: carryover + yesterday's fresh + breadth sample.
+            let base = db::quiz_for_date(&conn, &today, &yesterday)?;
+            let base_ids: Vec<i64> = base.iter().map(|q| q.id).collect();
+            let extra = db::pop_quiz_sample(
+                &conn,
+                &today,
+                &base_ids,
+                (POP_QUIZ_SIZE - base.len() as i64).max(0),
+            )?;
+            let all_ids: Vec<i64> = base_ids.iter().chain(extra.iter().map(|q| &q.id)).copied().collect();
+            if all_ids.is_empty() {
+                // Nothing to audit (shouldn't happen given planner guardrails):
+                // degrade to a normal lesson day.
+                s.session_type = "lesson".into();
+                s.plan_reason = String::new();
+            } else {
+                db::set_config(&conn, &pop_quiz_key(&today), &serde_json::to_string(&all_ids)?)?;
+            }
+        }
+        let quiz = questions_for_today(&conn, &today, &yesterday)?;
         s.current_step = if quiz.is_empty() { STEP_ROULETTE.into() } else { STEP_QUIZ.into() };
         s.status = "in_progress".into();
         s.started_at = Some(now_iso());
@@ -132,6 +203,8 @@ pub fn view(state: &AppState) -> SessionView {
             quiz_score: s.quiz_score,
             streak,
             locked: state.locked.load(std::sync::atomic::Ordering::SeqCst),
+            session_type: s.session_type,
+            plan_reason: s.plan_reason,
         },
         None => SessionView {
             date: today,
@@ -140,6 +213,8 @@ pub fn view(state: &AppState) -> SessionView {
             quiz_score: None,
             streak,
             locked: false,
+            session_type: "lesson".into(),
+            plan_reason: String::new(),
         },
     }
 }
@@ -238,6 +313,77 @@ pub async fn generation_worker(app: AppHandle) {
     }
 }
 
+/// Minimum quizzed concepts before pop-quiz days become possible.
+const POP_QUIZ_MIN_PRACTICED: i64 = 8;
+
+/// Decide (once) what kind of day `date` is. Runs inside the course job, so
+/// the decision lands the night before. Idempotent via a config flag.
+pub async fn ensure_day_plan(
+    state: &tauri::State<'_, AppState>,
+    date: &str,
+) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
+    let planned_key = format!("planned:{date}");
+    let (already, eligible, dossier) = {
+        let conn = state.db.0.lock().unwrap();
+        let already = db::get_config(&conn, &planned_key)?.is_some();
+        let existing_type = db::get_session(&conn, date)?.map(|s| s.session_type);
+        if already {
+            return Ok(existing_type.unwrap_or_else(|| "lesson".into()));
+        }
+        let practiced: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM mastery
+             WHERE state IN ('practicing','struggling','mastered','maintenance','decayed')",
+            [],
+            |r| r.get(0),
+        )?;
+        let prev = chrono::NaiveDate::parse_from_str(date, "%Y-%m-%d")?
+            .pred_opt()
+            .ok_or("date underflow")?
+            .format("%Y-%m-%d")
+            .to_string();
+        let prev_was_pop = db::get_session(&conn, &prev)?
+            .map(|s| s.session_type == "pop_quiz")
+            .unwrap_or(false);
+        let eligible = practiced >= POP_QUIZ_MIN_PRACTICED && !prev_was_pop;
+        let dossier = crate::mastery::build_dossier(&conn, date).unwrap_or_default();
+        (already, eligible, dossier)
+    };
+    let _ = already;
+
+    // Test/debug override skips the agent call entirely.
+    let plan = if let Ok(forced) = std::env::var("SDR_SESSION_TYPE") {
+        crate::generator::SessionPlan { session_type: forced, reason: "forced via SDR_SESSION_TYPE".into() }
+    } else if !eligible {
+        crate::generator::SessionPlan { session_type: "lesson".into(), reason: String::new() }
+    } else {
+        state.generator.plan_day(&dossier, eligible).await
+    };
+    // Guardrails beat the model.
+    let session_type = if plan.session_type == "pop_quiz" && eligible { "pop_quiz" } else { "lesson" };
+
+    let conn = state.db.0.lock().unwrap();
+    let mut s = db::get_session(&conn, date)?.unwrap_or(Session {
+        date: date.to_string(),
+        concept_id: None,
+        status: "pending".into(),
+        current_step: STEP_QUIZ.into(),
+        quiz_score: None,
+        started_at: None,
+        completed_at: None,
+        reading_seconds: 0,
+        session_type: "lesson".into(),
+        plan_reason: String::new(),
+    });
+    // Never re-type a session already underway.
+    if s.status == "pending" {
+        s.session_type = session_type.to_string();
+        s.plan_reason = plan.reason.chars().take(120).collect();
+        db::upsert_session(&conn, &s)?;
+    }
+    db::set_config(&conn, &planned_key, "1")?;
+    Ok(s.session_type)
+}
+
 async fn run_generation_job(
     _app: &AppHandle,
     state: &tauri::State<'_, AppState>,
@@ -246,6 +392,11 @@ async fn run_generation_job(
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     match kind {
         "course" => {
+            // The nightly plan decides whether target_date even needs a course.
+            let session_type = ensure_day_plan(state, target_date).await?;
+            if session_type == "pop_quiz" {
+                return Ok(());
+            }
             ensure_course_for_date(state, target_date).await?;
             Ok(())
         }
@@ -256,11 +407,20 @@ async fn run_generation_job(
                 .ok_or("date underflow")?
                 .format("%Y-%m-%d")
                 .to_string();
-            let course = {
+            let (course, prev_was_pop) = {
                 let conn = state.db.0.lock().unwrap();
-                db::course_for_date(&conn, &prev)?
+                (
+                    db::course_for_date(&conn, &prev)?,
+                    db::get_session(&conn, &prev)?
+                        .map(|s| s.session_type == "pop_quiz")
+                        .unwrap_or(false),
+                )
             };
             let Some(course) = course else {
+                if prev_was_pop {
+                    // Pop-quiz days produce no course; nothing to quiz on. Fine.
+                    return Ok(());
+                }
                 return Err(format!("no course for {prev}, cannot build quiz").into());
             };
             let (existing, dossier) = {
@@ -311,6 +471,8 @@ pub async fn ensure_course_for_date(
                     started_at: None,
                     completed_at: None,
                     reading_seconds: 0,
+                    session_type: "lesson".into(),
+                    plan_reason: String::new(),
                 });
                 s.concept_id = Some(c.id);
                 db::upsert_session(&conn, &s)?;

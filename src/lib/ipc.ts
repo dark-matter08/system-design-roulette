@@ -8,6 +8,8 @@ export interface SessionView {
   quiz_score: number | null;
   streak: number;
   locked: boolean;
+  session_type: 'lesson' | 'pop_quiz';
+  plan_reason: string;
 }
 
 export interface AppStateView {

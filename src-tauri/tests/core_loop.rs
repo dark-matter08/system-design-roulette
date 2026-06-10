@@ -138,6 +138,8 @@ fn streak_counts_consecutive_completed_days() {
             started_at: None,
             completed_at: None,
             reading_seconds: 1800,
+            session_type: "lesson".into(),
+            plan_reason: String::new(),
         }).unwrap();
     }
     // Today completed: streak 3. (2026-06-09 = "today")
@@ -246,4 +248,42 @@ fn teacher_preamble_wraps_dossier() {
     // TEACHER_PROMPT must carry the dossier placeholder exactly once.
     let n = system_design_roulette_lib::generator::TEACHER_PROMPT.matches("{{DOSSIER}}").count();
     assert_eq!(n, 1);
+}
+
+#[test]
+fn pop_quiz_sample_prefers_struggling_and_skips_carryover() {
+    use system_design_roulette_lib::mastery;
+    let conn = test_db();
+    let concepts = db::all_concepts(&conn).unwrap();
+    let (good, bad) = (concepts[0].clone(), concepts[1].clone());
+
+    // Two past courses with attempted questions.
+    let c1 = db::insert_course(&conn, "2026-06-01", good.id, "# A", "[]", "fallback").unwrap();
+    let c2 = db::insert_course(&conn, "2026-06-02", bad.id, "# B", "[]", "fallback").unwrap();
+    let mut ids = Vec::new();
+    for (course, n) in [(c1, 3), (c2, 3)] {
+        for i in 0..n {
+            let q = db::insert_question(&conn, course, &format!("Q{course}-{i}"), "mcq",
+                Some(r#"["a","b","c","d"]"#), "a", "x").unwrap();
+            db::record_attempt(&conn, &Attempt {
+                question_id: q, session_date: "2026-06-03".into(),
+                user_answer: "a".into(), correct: true, grader_feedback: String::new(),
+            }).unwrap();
+            ids.push(q);
+        }
+    }
+    // good practiced fine; bad struggling.
+    mastery::record_quiz_outcome(&conn, good.id, "2026-06-03", 1.0).unwrap();
+    mastery::record_quiz_outcome(&conn, bad.id, "2026-06-03", 0.0).unwrap();
+    // One question is in carryover -> excluded from sampling.
+    db::push_carryover(&conn, ids[0], "2026-06-03", "2026-06-04").unwrap();
+
+    let sample = db::pop_quiz_sample(&conn, "2026-06-04", &[], 4).unwrap();
+    assert!(!sample.is_empty());
+    assert!(sample.iter().all(|q| q.id != ids[0]), "carryover question must not be re-sampled");
+    // Struggling concept's questions sort first.
+    assert_eq!(sample[0].course_id, c2, "struggling concept should lead the audit");
+    // Exclusion list respected.
+    let excl = db::pop_quiz_sample(&conn, "2026-06-04", &ids, 10).unwrap();
+    assert!(excl.is_empty());
 }

@@ -62,12 +62,13 @@
   />
   <div class="idle-body">
     {#if owed}
-      <div class="meta-label">INCIDENT — P1 · training session due</div>
-      <h1>Your session starts now</h1>
+      {@const isAudit = app.session?.session_type === 'pop_quiz'}
+      <div class="meta-label">INCIDENT — P1 · {isAudit ? 'surprise audit due' : 'training session due'}</div>
+      <h1>{isAudit ? 'Pop quiz. No new topic today.' : 'Your session starts now'}</h1>
       <p class="sub">This screen stays until the work is done.</p>
       <div class="badges">
         <MetaBadge tone="teal">{#snippet children()}● uptime {streak}d{/snippet}</MetaBadge>
-        <MetaBadge tone="violet">{#snippet children()}est. 38 min{/snippet}</MetaBadge>
+        <MetaBadge tone="violet">{#snippet children()}est. {isAudit ? '15' : '38'} min{/snippet}</MetaBadge>
       </div>
       <button class="cta mono-cta" onclick={begin}>▲ ack &amp; begin session</button>
     {:else}
