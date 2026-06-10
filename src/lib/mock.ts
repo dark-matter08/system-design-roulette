@@ -337,6 +337,7 @@ export const mockApi = {
     resources: RESOURCES,
   }),
   openResources: async () => RESOURCES.length,
+  markFrontendReady: async () => {},
   ensureAudio: async () => ({
     engine: 'speech' as const,
     lines: [

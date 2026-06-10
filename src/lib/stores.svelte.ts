@@ -60,6 +60,8 @@ class AppStore {
   }
 
   async init() {
+    // Tell Rust the webview booted — the kiosk refuses to lock before this.
+    await api.markFrontendReady().catch(() => {});
     await this.refresh();
     await onEvent('session:owed', () => this.refresh());
     await onEvent('session:state', () => this.refresh());

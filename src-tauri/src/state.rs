@@ -24,6 +24,10 @@ pub struct AppState {
     pub exit_quiz_failures: Mutex<Vec<i64>>,
     /// System mute state before the lock engaged (None = not captured).
     pub prev_muted: Mutex<Option<bool>>,
+    /// Webview has booted and called mark_frontend_ready. The kiosk NEVER
+    /// engages before this: a dead webview has no escape hatch, and locking
+    /// behind one bricks the machine at every login.
+    pub frontend_ready: AtomicBool,
     /// Background generation worker wakeup.
     pub gen_notify: tokio::sync::Notify,
 }

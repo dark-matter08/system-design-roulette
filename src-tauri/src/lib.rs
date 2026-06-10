@@ -112,6 +112,7 @@ pub fn run() {
                 escape_failures: Mutex::new(Vec::new()),
                 exit_quiz_failures: Mutex::new(Vec::new()),
                 prev_muted: Mutex::new(None),
+                frontend_ready: AtomicBool::new(false),
                 gen_notify: tokio::sync::Notify::new(),
             });
 
@@ -184,6 +185,7 @@ pub fn run() {
             }
         })
         .invoke_handler(tauri::generate_handler![
+            commands::mark_frontend_ready,
             commands::get_app_state,
             commands::check_agent,
             commands::complete_setup,

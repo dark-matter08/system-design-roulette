@@ -140,6 +140,7 @@ export const isTauri =
   typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
 
 const realApi = {
+  markFrontendReady: () => invoke<void>('mark_frontend_ready'),
   getAppState: () => invoke<AppStateView>('get_app_state'),
   checkAgent: () => invoke<boolean>('check_agent'),
   completeSetup: (hour: number, minute: number, escapePhrase: string) =>

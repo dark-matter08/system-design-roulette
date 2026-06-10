@@ -24,6 +24,14 @@ pub struct AppStateView {
     pub debug_day: bool,
 }
 
+/// Called by the webview on boot. Until this fires, the kiosk refuses to
+/// engage (a dead webview has no escape hatch).
+#[tauri::command]
+pub fn mark_frontend_ready(state: State<'_, AppState>) -> CmdResult<()> {
+    state.frontend_ready.store(true, Ordering::SeqCst);
+    Ok(())
+}
+
 #[tauri::command]
 pub fn get_app_state(state: State<'_, AppState>) -> CmdResult<AppStateView> {
     let (onboarded, hour, minute) = {

@@ -102,6 +102,12 @@ pub fn engage(app: &AppHandle, state: &AppState) {
         state.locked.store(true, Ordering::SeqCst);
         return;
     }
+    // Safety interlock: never lock behind a webview that hasn't booted —
+    // the escape hatch lives in it. The owed watcher retries once it's up.
+    if !state.frontend_ready.load(Ordering::SeqCst) {
+        log::warn!("kiosk engage refused: frontend not ready (white-screen guard)");
+        return;
+    }
     if state.locked.swap(true, Ordering::SeqCst) {
         return;
     }
