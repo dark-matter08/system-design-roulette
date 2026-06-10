@@ -2,6 +2,8 @@
   import { api, type DashboardView, type ArchivedCourse } from '../ipc';
   import { app } from '../stores.svelte';
   import Markdown from '../components/Markdown.svelte';
+  import ClusterBar from '../components/ClusterBar.svelte';
+  import NodeCard from '../components/NodeCard.svelte';
 
   let data = $state<DashboardView | null>(null);
   let viewing = $state<ArchivedCourse | null>(null);
@@ -35,79 +37,90 @@
   });
 </script>
 
-<div class="dash-wrap">
+<div class="dash-wrap blueprint">
+  <ClusterBar route={viewing ? 'archive' : 'cluster'} status="read-only" tone="idle" />
   {#if viewing}
-    <div class="dash-head">
-      <button class="ghost" onclick={() => (viewing = null)}>← back</button>
-      <h2>{viewing.title} <span class="date">({viewing.session_date})</span></h2>
-    </div>
-    <div class="dash-body">
-      <article class="column theme-scholar reader-card">
-        <Markdown markdown={viewing.markdown} />
-      </article>
-    </div>
-  {:else}
-    <div class="dash-head">
-      <button class="ghost" onclick={() => { app.screen = 'idle'; app.refresh(); }}>← back</button>
-      <h2>History & stats</h2>
-    </div>
-    {#if !data}
-      <p class="sub">Loading…</p>
-    {:else}
-      <div class="stats">
-        <div class="stat"><span class="num">{data.streak}</span><span class="lab">streak</span></div>
-        <div class="stat">
-          <span class="num">{data.concepts_covered}/{data.concepts_total}</span>
-          <span class="lab">topics covered</span>
-        </div>
-        <div class="stat"><span class="num">{data.carryover_due}</span><span class="lab">questions returning</span></div>
-      </div>
-      <div class="heatmap" aria-label="last 16 weeks of sessions">
-        {#each heatmap as week}
-          <div class="hm-col">
-            {#each week as cell}
-              <div
-                class="hm-cell"
-                class:done={cell.status === 'completed'}
-                class:skip={cell.status === 'skipped'}
-                title="{cell.date}: {cell.status === 'none' ? 'no session' : cell.status}"
-              ></div>
-            {/each}
-          </div>
-        {/each}
+    <div class="dash-inner">
+      <div class="dash-head">
+        <button class="ghost mono-ghost" onclick={() => (viewing = null)}>← back</button>
+        <h2>{viewing.title} <span class="date mono">({viewing.session_date})</span></h2>
       </div>
       <div class="dash-body">
-        <table class="history">
-          <thead>
-            <tr><th>date</th><th>topic</th><th>status</th><th>score</th><th></th></tr>
-          </thead>
-          <tbody>
-            {#each data.history as h}
-              <tr>
-                <td class="mono">{h.date}</td>
-                <td>{h.concept_title ?? '—'}</td>
-                <td>
-                  <span
-                    class="badge"
-                    class:ok={h.status === 'completed'}
-                    class:bad={h.status === 'skipped'}
-                    class:warn={h.status === 'in_progress' || h.status === 'pending'}
-                  >
-                    {h.status}
-                  </span>
-                </td>
-                <td class="mono">{scoreLabel(h.quiz_score)}</td>
-                <td>
-                  {#if h.concept_title}
-                    <button class="ghost small" onclick={() => openCourse(h.date)}>read</button>
-                  {/if}
-                </td>
-              </tr>
-            {/each}
-          </tbody>
-        </table>
+        <article class="column theme-scholar reader-card">
+          <Markdown markdown={viewing.markdown} />
+        </article>
       </div>
-    {/if}
+    </div>
+  {:else}
+    <div class="dash-inner">
+      <div class="dash-head">
+        <button class="ghost mono-ghost" onclick={() => { app.screen = 'idle'; app.refresh(); }}>← back</button>
+        <h2>Cluster overview</h2>
+      </div>
+      {#if !data}
+        <p class="sub mono">loading…</p>
+      {:else}
+        <div class="stats">
+          <NodeCard name="uptime" badge="streak" badgeTone="teal">
+            {#snippet children()}<div class="num mono">{data?.streak ?? 0}d</div>{/snippet}
+          </NodeCard>
+          <NodeCard name="pool-coverage" badge="topics" badgeTone="violet">
+            {#snippet children()}<div class="num mono">{data?.concepts_covered ?? 0}/{data?.concepts_total ?? 0}</div>{/snippet}
+          </NodeCard>
+          <NodeCard name="dead-letter-queue" badge="retries due" badgeTone="amber">
+            {#snippet children()}<div class="num mono">{data?.carryover_due ?? 0}</div>{/snippet}
+          </NodeCard>
+        </div>
+        <div class="hm-block">
+          <div class="meta-label">SESSION_LOG — last 16 weeks</div>
+          <div class="heatmap" aria-label="last 16 weeks of sessions">
+            {#each heatmap as week}
+              <div class="hm-col">
+                {#each week as cell}
+                  <div
+                    class="hm-cell"
+                    class:done={cell.status === 'completed'}
+                    class:skip={cell.status === 'skipped'}
+                    title="{cell.date}: {cell.status === 'none' ? 'no session' : cell.status}"
+                  ></div>
+                {/each}
+              </div>
+            {/each}
+          </div>
+        </div>
+        <div class="dash-body">
+          <table class="history mono">
+            <thead>
+              <tr><th>date</th><th>topic</th><th>status</th><th>budget</th><th></th></tr>
+            </thead>
+            <tbody>
+              {#each data.history as h}
+                <tr>
+                  <td>{h.date}</td>
+                  <td class="topic-cell">{h.concept_title ?? '—'}</td>
+                  <td>
+                    <span
+                      class="badge"
+                      class:ok={h.status === 'completed'}
+                      class:bad={h.status === 'skipped'}
+                      class:warn={h.status === 'in_progress' || h.status === 'pending'}
+                    >
+                      {h.status === 'completed' ? '200' : h.status === 'skipped' ? '503' : h.status}
+                    </span>
+                  </td>
+                  <td>{scoreLabel(h.quiz_score)}</td>
+                  <td>
+                    {#if h.concept_title}
+                      <button class="ghost mono-ghost small" onclick={() => openCourse(h.date)}>read</button>
+                    {/if}
+                  </td>
+                </tr>
+              {/each}
+            </tbody>
+          </table>
+        </div>
+      {/if}
+    </div>
   {/if}
 </div>
 
@@ -116,9 +129,18 @@
     flex: 1;
     display: flex;
     flex-direction: column;
-    padding: 32px 40px;
     min-height: 0;
-    gap: 18px;
+    animation: fade-in 0.35s ease;
+  }
+  .dash-inner {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    padding: 18px 40px 32px;
+    min-height: 0;
+    gap: 16px;
+    width: min(1000px, 100%);
+    margin: 0 auto;
   }
   .dash-head {
     display: flex;
@@ -130,38 +152,25 @@
   }
   .date {
     color: var(--muted);
-    font-size: 15px;
+    font-size: 13px;
   }
   .sub {
-    color: var(--muted);
+    color: var(--faint);
   }
   .stats {
-    display: flex;
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
     gap: 14px;
   }
-  .stat {
-    background: var(--surface);
-    border-radius: 12px;
-    padding: 14px 24px;
+  .num {
+    font-size: 24px;
+    text-align: center;
+    color: var(--fg);
+  }
+  .hm-block {
     display: flex;
     flex-direction: column;
-    align-items: center;
-  }
-  .num {
-    font-size: 22px;
-    font-weight: 600;
-    font-family: var(--font-display);
-  }
-  .lab {
-    font-size: 10px;
-    color: var(--muted);
-    letter-spacing: 1px;
-    text-transform: uppercase;
-  }
-  .dash-body {
-    flex: 1;
-    overflow-y: auto;
-    min-height: 0;
+    gap: 8px;
   }
   .heatmap {
     display: flex;
@@ -186,28 +195,37 @@
     border: 1px solid var(--bad-fg);
     box-sizing: border-box;
   }
+  .dash-body {
+    flex: 1;
+    overflow-y: auto;
+    min-height: 0;
+  }
   .history {
     width: 100%;
     border-collapse: collapse;
-    font-size: 13px;
+    font-size: 12px;
   }
   .history th {
     text-align: left;
     color: var(--faint);
     font-weight: 500;
-    font-size: 11px;
+    font-size: 10px;
     letter-spacing: 1px;
     text-transform: uppercase;
     padding: 8px 12px;
     border-bottom: 1px solid var(--border);
   }
   .history td {
-    padding: 10px 12px;
+    padding: 9px 12px;
     border-bottom: 1px solid var(--surface);
   }
+  .topic-cell {
+    font-family: var(--font-body);
+    font-size: 13px;
+  }
   .ghost.small {
-    padding: 4px 12px;
-    font-size: 12px;
+    padding: 3px 10px;
+    font-size: 11px;
   }
   .reader-card {
     background: var(--bg);

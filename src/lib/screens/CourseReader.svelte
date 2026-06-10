@@ -2,7 +2,6 @@
   import { api, type CourseView } from '../ipc';
   import { app } from '../stores.svelte';
   import Markdown from '../components/Markdown.svelte';
-  import TimerBar from '../components/TimerBar.svelte';
 
   let course = $state<CourseView | null>(null);
 
@@ -10,6 +9,13 @@
     app.timerRemaining >= 0 ? app.timerRemaining : (course?.remaining_seconds ?? 1)
   );
   const done = $derived(remaining <= 0);
+  const mm = $derived(Math.floor(Math.max(remaining, 0) / 60));
+  const ss = $derived(Math.max(remaining, 0) % 60);
+  const pct = $derived(
+    course && course.total_seconds > 0
+      ? ((course.total_seconds - remaining) / course.total_seconds) * 100
+      : 0
+  );
 
   $effect(() => {
     api.ensureCourse().then((c) => (course = c));
@@ -31,12 +37,18 @@
   {:else}
     <header class="reader-head">
       <div class="title-row">
-        <h2>{course.title}</h2>
-        {#if course.source === 'fallback'}
-          <span class="badge warn">bundled course — agent was unreachable</span>
-        {/if}
+        <div class="title-left">
+          <span class="node-tag mono">📖 course-reader</span>
+          <h2>{course.title}</h2>
+          {#if course.source === 'fallback'}
+            <span class="badge warn">bundled — agent was unreachable</span>
+          {/if}
+        </div>
+        <span class="ttl mono" class:done>
+          {done ? 'TTL 0 — unlocked' : `TTL ${mm}:${String(ss).padStart(2, '0')}`}
+        </span>
       </div>
-      <TimerBar {remaining} total={course.total_seconds} />
+      <div class="progress-track"><div class="progress-fill" style="width: {pct}%"></div></div>
     </header>
     <div class="reader-body">
       <article class="column">
@@ -44,10 +56,7 @@
         {#if course.resources.length > 0}
           <section class="resources">
             <h3>Reading list ({course.resources.length})</h3>
-            <p class="fine">
-              Links unlock after the session — they'll open in your browser from the
-              completion screen.
-            </p>
+            <p class="fine mono">egress queue — links unlock after the session completes</p>
             <ul>
               {#each course.resources as r}
                 <li>
@@ -59,8 +68,8 @@
           </section>
         {/if}
         <div class="finish-row">
-          <button class="cta" onclick={finish} disabled={!done}>
-            {done ? 'Complete session' : 'Keep reading — timer running'}
+          <button class="cta mono-cta" onclick={finish} disabled={!done}>
+            {done ? '✓ complete session' : 'keep reading — TTL running'}
           </button>
         </div>
       </article>
@@ -86,10 +95,33 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 16px 24px 0;
+    gap: 16px;
+    padding: 14px 24px 10px;
+  }
+  .title-left {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+  .node-tag {
+    font-size: 10px;
+    color: var(--muted);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 3px 8px;
+    letter-spacing: 0.5px;
   }
   .title-row h2 {
-    font-size: 20px;
+    font-size: 19px;
+  }
+  .ttl {
+    font-size: 14px;
+    color: var(--accent);
+    white-space: nowrap;
+  }
+  .ttl.done {
+    color: var(--ok-fg);
   }
   .reader-body {
     flex: 1;
@@ -110,8 +142,9 @@
     font-size: 18px;
   }
   .fine {
-    font-size: 12px;
+    font-size: 10px;
     color: var(--faint);
+    letter-spacing: 0.5px;
   }
   .r-title {
     font-weight: 600;

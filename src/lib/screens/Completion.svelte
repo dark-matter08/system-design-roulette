@@ -1,6 +1,9 @@
 <script lang="ts">
   import { api } from '../ipc';
   import { app } from '../stores.svelte';
+  import ClusterBar from '../components/ClusterBar.svelte';
+  import NodeCard from '../components/NodeCard.svelte';
+  import StatusLED from '../components/StatusLED.svelte';
 
   const session = $derived(app.session);
   const skipped = $derived(session?.status === 'skipped');
@@ -12,44 +15,65 @@
   }
 </script>
 
-<div class="screen">
-  {#if skipped}
-    <span class="kicker">session skipped</span>
-    <h1>Streak broken.</h1>
-    <p class="sub">Today is marked as skipped. The wheel spins again tomorrow.</p>
-  {:else}
-    <span class="kicker">session complete</span>
-    <h1>Done for today.</h1>
-    <div class="stats">
-      <div class="stat">
-        <span class="num">
-          {session?.quiz_score != null ? Math.round(session.quiz_score * 100) + '%' : '—'}
-        </span>
-        <span class="lab">quiz score</span>
-      </div>
-      <div class="stat">
-        <span class="num">{session?.streak ?? 0}</span>
-        <span class="lab">day streak</span>
-      </div>
-    </div>
-    {#if app.genStatus}
-      <p class="fine">{app.genStatus}</p>
+<div class="done blueprint">
+  <ClusterBar
+    route={skipped ? 'postmortem' : 'deploy/complete'}
+    status={skipped ? 'circuit breaker tripped' : 'session shipped'}
+    tone={skipped ? 'err' : 'ok'}
+  />
+  <div class="done-body">
+    {#if skipped}
+      <div class="meta-label">POSTMORTEM — streak reset to 0</div>
+      <h1>Circuit breaker tripped.</h1>
+      <p class="sub">Today is marked skipped. The wheel spins again tomorrow.</p>
     {:else}
-      <p class="fine">pre-generating tomorrow's course in the background…</p>
+      <div class="meta-label">DEPLOY COMPLETE — session shipped</div>
+      <h1>Done for today.</h1>
+      <div class="stats">
+        <NodeCard name="error-budget" badge="quiz" badgeTone="muted">
+          {#snippet children()}
+            <div class="num mono">
+              {session?.quiz_score != null ? Math.round(session.quiz_score * 100) + '%' : '—'}
+            </div>
+          {/snippet}
+        </NodeCard>
+        <NodeCard name="uptime" badge="streak" badgeTone="teal">
+          {#snippet children()}
+            <div class="num mono">{session?.streak ?? 0}d</div>
+          {/snippet}
+        </NodeCard>
+      </div>
+      <div class="pregen">
+        <StatusLED tone="pending" label={app.genStatus || "shard: pre-generating tomorrow's course"} />
+      </div>
+      <div class="actions">
+        <button class="cta mono-cta" onclick={openResources}>
+          {resourcesOpened ? '✓ egress queue flushed' : '⇡ open reading list in browser'}
+        </button>
+        <button class="ghost mono-ghost" onclick={() => (app.screen = 'dashboard')}>cluster overview</button>
+      </div>
     {/if}
-    <div class="actions">
-      <button class="cta" onclick={openResources}>
-        {resourcesOpened ? 'Resources opened ✓' : 'Open reading list in browser'}
-      </button>
-      <button class="ghost" onclick={() => (app.screen = 'dashboard')}>history & stats</button>
-    </div>
-  {/if}
+  </div>
 </div>
 
 <style>
+  .done {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    animation: fade-in 0.35s ease;
+  }
+  .done-body {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+  }
   h1 {
-    font-size: 38px;
-    margin: 14px 0 22px;
+    font-size: 36px;
+    margin: 10px 0 22px;
   }
   .sub {
     color: var(--muted);
@@ -58,31 +82,18 @@
     display: flex;
     gap: 14px;
     margin-bottom: 22px;
+    min-width: 360px;
   }
-  .stat {
-    background: var(--surface);
-    border-radius: 12px;
-    padding: 16px 26px;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 2px;
+  .stats :global(.node) {
+    flex: 1;
   }
   .num {
     font-size: 26px;
-    font-weight: 600;
-    font-family: var(--font-display);
+    color: var(--fg);
+    text-align: center;
   }
-  .lab {
-    font-size: 11px;
-    color: var(--muted);
-    letter-spacing: 1px;
-    text-transform: uppercase;
-  }
-  .fine {
-    font-size: 12px;
-    color: var(--faint);
-    margin-bottom: 20px;
+  .pregen {
+    margin-bottom: 22px;
   }
   .actions {
     display: flex;

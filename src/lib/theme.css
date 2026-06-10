@@ -6,6 +6,17 @@
   --surface: #221d29;
   --surface-2: #2b2434;
   --border: #3a3344;
+  --grid-dot: #221c29;
+  --node-bg: #1b1721;
+  --node-border: #3a3344;
+  --node-divider: #2b2434;
+  --led-ok: #9fe1cb;
+  --led-warn: #fac775;
+  --led-err: #f09595;
+  --led-idle: #5e5750;
+  --violet: #534ab7;
+  --violet-fg: #cecbf6;
+  --violet-bg: #26215c;
   --fg: #f2ede4;
   --muted: #a89f92;
   --faint: #5e5750;
@@ -216,6 +227,54 @@ textarea:focus {
 
 .mono {
   font-family: var(--font-mono);
+}
+
+/* ---- topology chrome ---- */
+
+.blueprint {
+  background-image: radial-gradient(circle, var(--grid-dot) 1px, transparent 1px);
+  background-size: 22px 22px;
+}
+
+.meta-label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 1px;
+  color: var(--faint);
+  text-transform: uppercase;
+}
+
+.mono-value {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--fg);
+}
+
+button.cta.mono-cta {
+  font-family: var(--font-mono);
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  border-radius: 6px;
+  text-transform: uppercase;
+  font-size: 13px;
+}
+
+button.ghost.mono-ghost {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  border-radius: 6px;
+  letter-spacing: 0.5px;
+  text-transform: lowercase;
+}
+
+@keyframes led-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.25;
+  }
 }
 
 ::-webkit-scrollbar {

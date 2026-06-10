@@ -1,6 +1,9 @@
 <script lang="ts">
   import { api } from '../ipc';
   import { app } from '../stores.svelte';
+  import ClusterBar from '../components/ClusterBar.svelte';
+  import NodeCard from '../components/NodeCard.svelte';
+  import MetaBadge from '../components/MetaBadge.svelte';
 
   const owed = $derived(app.state?.owed ?? false);
   const streak = $derived(app.session?.streak ?? 0);
@@ -50,56 +53,98 @@
   }
 </script>
 
-<div class="screen">
-  <span class="kicker">system design roulette</span>
-  {#if owed}
-    <h1>Your session starts now</h1>
-    <p class="sub">This screen stays until the work is done.</p>
-    <div class="pills">
-      <span class="pill">🔥 {streak} day streak</span>
-      <span class="pill">⏱ ~38 min total</span>
-    </div>
-    <button class="cta" onclick={begin}>Begin today's session</button>
-  {:else}
-    <h1>Next session in <span class="mono countdown">{countdown}</span></h1>
-    <div class="pills">
-      <span class="pill">🔥 {streak} day streak</span>
-      <span class="pill">daily at {String(hour).padStart(2, '0')}:{String(minute).padStart(2, '0')}</span>
-    </div>
-    <div class="actions">
-      <button class="ghost" onclick={() => (app.screen = 'dashboard')}>history & stats</button>
-      <button class="ghost" onclick={begin}>start early</button>
-      <button class="ghost" onclick={() => (editing = !editing)}>change time</button>
-    </div>
-    {#if editing}
-      <div class="edit-row">
-        <input type="time" bind:value={newTime} style="width: 140px;" />
-        <button class="ghost" onclick={saveTime}>{saved ? 'saved ✓' : 'save'}</button>
+<div class="idle blueprint">
+  <ClusterBar
+    route={owed ? 'incident' : 'cluster'}
+    status={owed ? 'session owed — lock imminent' : 'all systems nominal'}
+    tone={owed ? 'warn' : 'ok'}
+  />
+  <div class="idle-body">
+    {#if owed}
+      <div class="meta-label">INCIDENT — P1 · training session due</div>
+      <h1>Your session starts now</h1>
+      <p class="sub">This screen stays until the work is done.</p>
+      <div class="badges">
+        <MetaBadge tone="teal">{#snippet children()}● uptime {streak}d{/snippet}</MetaBadge>
+        <MetaBadge tone="violet">{#snippet children()}est. 38 min{/snippet}</MetaBadge>
       </div>
+      <button class="cta mono-cta" onclick={begin}>▲ ack &amp; begin session</button>
+    {:else}
+      <h1>Cluster idle</h1>
+      <p class="sub">Next session deploys automatically. Showing up is the whole job.</p>
+      <div class="node-wrap">
+        <NodeCard icon="⏱" name="cron-scheduler" badge=":launchd" badgeTone="amber">
+          {#snippet children()}
+            <div class="meta-label">NEXT_FIRE — T-minus</div>
+            <div class="count mono">{countdown}</div>
+            <div class="sched mono">daily at {String(hour).padStart(2, '0')}:{String(minute).padStart(2, '0')}</div>
+          {/snippet}
+        </NodeCard>
+      </div>
+      <div class="badges">
+        <MetaBadge tone="teal">{#snippet children()}● uptime {streak}d{/snippet}</MetaBadge>
+      </div>
+      <div class="actions">
+        <button class="ghost mono-ghost" onclick={() => (app.screen = 'dashboard')}>cluster overview</button>
+        <button class="ghost mono-ghost" onclick={begin}>deploy early</button>
+        <button class="ghost mono-ghost" onclick={() => (editing = !editing)}>reschedule</button>
+      </div>
+      {#if editing}
+        <div class="edit-row">
+          <input type="time" bind:value={newTime} style="width: 140px;" class="mono" />
+          <button class="ghost mono-ghost" onclick={saveTime}>{saved ? 'saved ✓' : 'apply'}</button>
+        </div>
+      {/if}
     {/if}
-  {/if}
+  </div>
 </div>
 
 <style>
-  h1 {
-    font-size: 36px;
-    margin: 16px 0 8px;
-    text-align: center;
+  .idle {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    animation: fade-in 0.35s ease;
   }
-  .countdown {
-    color: var(--accent);
+  .idle-body {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+  }
+  h1 {
+    font-size: 34px;
+    margin: 10px 0 6px;
+    text-align: center;
   }
   .sub {
     color: var(--muted);
+    font-size: 13px;
+    margin: 0 0 22px;
   }
-  .pills {
+  .badges {
     display: flex;
     gap: 10px;
-    margin: 20px 0 28px;
+    margin-bottom: 24px;
+  }
+  .node-wrap {
+    width: 320px;
+    margin-bottom: 18px;
+  }
+  .count {
+    font-size: 30px;
+    color: var(--accent);
+    margin: 4px 0 2px;
+  }
+  .sched {
+    font-size: 11px;
+    color: var(--faint);
   }
   .actions {
     display: flex;
-    gap: 12px;
+    gap: 10px;
   }
   .edit-row {
     display: flex;
