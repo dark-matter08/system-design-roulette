@@ -52,6 +52,16 @@
     await api.startSession();
     await app.refresh();
   }
+
+  async function pauseSched() {
+    await api.pauseSchedule().catch((e) => (app.error = String(e)));
+    await app.refresh();
+  }
+
+  async function resumeSched() {
+    await api.resumeSchedule().catch((e) => (app.error = String(e)));
+    await app.refresh();
+  }
 </script>
 
 <div class="idle blueprint">
@@ -80,13 +90,23 @@
       <h1>Cluster idle</h1>
       <p class="sub">Next session deploys automatically. Showing up is the whole job.</p>
       <div class="node-wrap">
-        <NodeCard icon="⏱" name="cron-scheduler" badge=":launchd" badgeTone="amber">
-          {#snippet children()}
-            <div class="meta-label">NEXT_FIRE — T-minus</div>
-            <div class="count mono">{countdown}</div>
-            <div class="sched mono">daily at {String(hour).padStart(2, '0')}:{String(minute).padStart(2, '0')}</div>
-          {/snippet}
-        </NodeCard>
+        {#if app.state?.schedule_paused}
+          <NodeCard icon="⏸" name="cron-scheduler" badge="paused" badgeTone="red" accent="var(--led-err)">
+            {#snippet children()}
+              <div class="meta-label">SCHEDULER PAUSED</div>
+              <div class="paused-note">No sessions will fire — launchd agent removed.</div>
+              <button class="cta mono-cta resume-sched" onclick={resumeSched}>▶ resume schedule</button>
+            {/snippet}
+          </NodeCard>
+        {:else}
+          <NodeCard icon="⏱" name="cron-scheduler" badge=":launchd" badgeTone="amber">
+            {#snippet children()}
+              <div class="meta-label">NEXT_FIRE — T-minus</div>
+              <div class="count mono">{countdown}</div>
+              <div class="sched mono">daily at {String(hour).padStart(2, '0')}:{String(minute).padStart(2, '0')}</div>
+            {/snippet}
+          </NodeCard>
+        {/if}
       </div>
       <div class="badges">
         <MetaBadge tone="teal">{#snippet children()}● uptime {streak}d{/snippet}</MetaBadge>
@@ -102,6 +122,9 @@
           <button class="ghost mono-ghost" onclick={begin}>deploy early</button>
         {/if}
         <button class="ghost mono-ghost" onclick={() => (editing = !editing)}>reschedule</button>
+        {#if !app.state?.schedule_paused}
+          <button class="ghost mono-ghost" onclick={pauseSched}>⏸ pause schedule</button>
+        {/if}
       </div>
       {#if editing}
         <div class="edit-row">
@@ -162,6 +185,15 @@
   }
   .resume {
     margin-bottom: 16px;
+  }
+  .paused-note {
+    font-size: 12px;
+    color: var(--muted);
+    margin: 4px 0 12px;
+  }
+  .resume-sched {
+    font-size: 11px;
+    padding: 8px 18px;
   }
   .disarmed {
     background: var(--bad-bg);

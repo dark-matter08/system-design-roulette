@@ -115,6 +115,7 @@ function session(): SessionView {
 }
 
 let setupCompleted = false;
+let mockPaused = params.has('paused');
 
 function appState(): AppStateView {
   const inSetup = location.search.includes('setup') && !setupCompleted;
@@ -128,6 +129,7 @@ function appState(): AppStateView {
     schedule_minute: 0,
     debug_day: true,
     enforcement_disarmed: params.has('disarmed'),
+    schedule_paused: mockPaused,
   };
 }
 
@@ -214,6 +216,12 @@ export const mockApi = {
     return appState();
   },
   updateSchedule: async () => {},
+  pauseSchedule: async () => {
+    mockPaused = true;
+  },
+  resumeSchedule: async () => {
+    mockPaused = false;
+  },
   startSession: async () => {
     state.status = 'in_progress';
     state.step = 'quiz';

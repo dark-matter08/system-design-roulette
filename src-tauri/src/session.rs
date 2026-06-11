@@ -34,6 +34,10 @@ pub fn session_owed(state: &AppState) -> bool {
     if !onboarded {
         return false;
     }
+    // Paused scheduler: nothing is ever owed until the user resumes.
+    if matches!(db::get_config(&conn, "schedule_paused"), Ok(Some(v)) if v == "1") {
+        return false;
+    }
     if let Ok(Some(s)) = db::get_session(&conn, &today) {
         if s.status == "completed" || s.status == "skipped" {
             return false;

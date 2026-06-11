@@ -133,7 +133,8 @@ pub fn run() {
                 let state = app.state::<AppState>();
                 let conn = state.db.0.lock().unwrap();
                 let onboarded = matches!(db::get_config(&conn, "onboarded"), Ok(Some(v)) if v == "1");
-                if onboarded {
+                let paused = matches!(db::get_config(&conn, "schedule_paused"), Ok(Some(v)) if v == "1");
+                if onboarded && !paused {
                     let hour: u32 = db::get_config(&conn, "schedule_hour")
                         .ok().flatten().and_then(|v| v.parse().ok()).unwrap_or(9);
                     let minute: u32 = db::get_config(&conn, "schedule_minute")
@@ -201,6 +202,8 @@ pub fn run() {
             commands::check_agent,
             commands::complete_setup,
             commands::update_schedule,
+            commands::pause_schedule,
+            commands::resume_schedule,
             commands::start_session,
             commands::get_quiz,
             commands::submit_answer,

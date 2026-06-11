@@ -20,6 +20,7 @@ export interface AppStateView {
   schedule_minute: number;
   debug_day: boolean;
   enforcement_disarmed: boolean;
+  schedule_paused: boolean;
 }
 
 export interface QuizQuestionView {
@@ -150,6 +151,8 @@ const realApi = {
     }),
   updateSchedule: (hour: number, minute: number) =>
     invoke<void>('update_schedule', { hour, minute }),
+  pauseSchedule: () => invoke<void>('pause_schedule'),
+  resumeSchedule: () => invoke<void>('resume_schedule'),
   startSession: () => invoke<SessionView>('start_session'),
   getQuiz: () => invoke<QuizQuestionView[]>('get_quiz'),
   submitAnswer: (questionId: number, answer: string) =>

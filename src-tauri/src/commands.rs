@@ -25,6 +25,8 @@ pub struct AppStateView {
     /// ~/sdr-unlock exists: every lock releases instantly. Surfaced so a
     /// leftover emergency file can't silently neuter enforcement.
     pub enforcement_disarmed: bool,
+    /// Scheduler paused: no launchd agent, no owed sessions, until resumed.
+    pub schedule_paused: bool,
 }
 
 /// Called by the webview on boot. Until this fires, the kiosk refuses to
@@ -48,6 +50,10 @@ pub fn get_app_state(state: State<'_, AppState>) -> CmdResult<AppStateView> {
     let enforcement_disarmed = std::env::var_os("HOME")
         .map(|h| std::path::Path::new(&h).join("sdr-unlock").exists())
         .unwrap_or(false);
+    let schedule_paused = {
+        let conn = state.db.0.lock().unwrap();
+        matches!(db::get_config(&conn, "schedule_paused"), Ok(Some(v)) if v == "1")
+    };
     Ok(AppStateView {
         onboarded,
         session: session::view(&state),
@@ -57,7 +63,40 @@ pub fn get_app_state(state: State<'_, AppState>) -> CmdResult<AppStateView> {
         agent_ok: None,
         debug_day: state.debug_day,
         enforcement_disarmed,
+        schedule_paused,
     })
+}
+
+/// Pause the daily schedule entirely: launchd agent removed, owed checks
+/// disabled, countdown hidden — dormant until resume_schedule.
+#[tauri::command]
+pub fn pause_schedule(app: AppHandle, state: State<'_, AppState>) -> CmdResult<()> {
+    {
+        let conn = state.db.0.lock().unwrap();
+        db::set_config(&conn, "schedule_paused", "1").map_err(err)?;
+    }
+    if !state.debug_day {
+        crate::scheduler::uninstall()?;
+    }
+    let _ = app.emit("session:state", session::view(&state));
+    Ok(())
+}
+
+#[tauri::command]
+pub fn resume_schedule(app: AppHandle, state: State<'_, AppState>) -> CmdResult<()> {
+    let (hour, minute) = {
+        let conn = state.db.0.lock().unwrap();
+        db::set_config(&conn, "schedule_paused", "0").map_err(err)?;
+        (
+            db::get_config(&conn, "schedule_hour").ok().flatten().and_then(|v| v.parse().ok()).unwrap_or(9),
+            db::get_config(&conn, "schedule_minute").ok().flatten().and_then(|v| v.parse().ok()).unwrap_or(0),
+        )
+    };
+    if !state.debug_day {
+        crate::scheduler::install(hour, minute)?;
+    }
+    let _ = app.emit("session:state", session::view(&state));
+    Ok(())
 }
 
 #[tauri::command]

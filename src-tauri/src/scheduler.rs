@@ -87,10 +87,15 @@ pub fn is_installed() -> bool {
 /// to the installed app), rewrite it for the current executable.
 pub fn ensure_current(hour: u32, minute: u32) {
     let Some(path) = plist_path() else { return };
-    let Ok(existing) = std::fs::read_to_string(&path) else { return };
     let exe = current_exe_path();
-    if !existing.contains(&exe) {
-        log::info!("launchd plist points elsewhere; reinstalling for {exe}");
+    // Missing plist (manually removed) or one pointing at a stale binary:
+    // reinstall. Callers skip this entirely while the schedule is paused.
+    let needs_install = match std::fs::read_to_string(&path) {
+        Ok(existing) => !existing.contains(&exe),
+        Err(_) => true,
+    };
+    if needs_install {
+        log::info!("launchd plist missing/stale; reinstalling for {exe}");
         if let Err(e) = install(hour, minute) {
             log::warn!("launchd self-heal failed: {e}");
         }
