@@ -113,7 +113,8 @@ pub struct Generator {
     pub scratch_dir: PathBuf,
     /// Primary model for course generation (the expensive, quality-bound call).
     /// Quiz and grading stay on sonnet: rubric-bound, latency-sensitive.
-    pub model: String,
+    /// Shared + hot-swappable: settings changes apply without a restart.
+    pub model: std::sync::Arc<std::sync::Mutex<String>>,
     /// Live agent-activity lines for the UI (gen:log). None in tests.
     pub log_tx: Option<tokio::sync::broadcast::Sender<String>>,
 }
@@ -161,11 +162,16 @@ impl Generator {
         claude_bin: String,
         codex_bin: Option<String>,
         scratch_dir: PathBuf,
-        model: String,
+        model: std::sync::Arc<std::sync::Mutex<String>>,
         log_tx: Option<tokio::sync::broadcast::Sender<String>>,
     ) -> Self {
         let _ = std::fs::create_dir_all(&scratch_dir);
         Self { claude_bin, codex_bin, scratch_dir, model, log_tx }
+    }
+
+    /// The course-generation model right now (SDR_MODEL env wins for tests).
+    pub fn current_model(&self) -> String {
+        std::env::var("SDR_MODEL").unwrap_or_else(|_| self.model.lock().unwrap().clone())
     }
 
     fn log(&self, msg: impl Into<String>) {
@@ -187,7 +193,7 @@ impl Generator {
                 .replace("{{CATEGORY}}", category),
         );
         match self
-            .run_with_fallback::<GeneratedCourse>(&prompt, true, Duration::from_secs(720), &self.model)
+            .run_with_fallback::<GeneratedCourse>(&prompt, true, Duration::from_secs(720), &self.current_model())
             .await
         {
             Ok((course, source)) => Ok((course, source)),

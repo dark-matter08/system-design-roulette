@@ -6,7 +6,8 @@
   import MetaBadge from '../components/MetaBadge.svelte';
   import TimePicker from '../components/TimePicker.svelte';
   import EnforcementPicker from '../components/EnforcementPicker.svelte';
-  import { Clock, Lock, Play, Pause, Rocket, LayoutDashboard, CalendarClock } from 'lucide-svelte';
+  import ModelPicker from '../components/ModelPicker.svelte';
+  import { Clock, Lock, Play, Pause, Rocket, Cpu } from 'lucide-svelte';
 
   const owed = $derived(app.state?.owed ?? false);
   const streak = $derived(app.session?.streak ?? 0);
@@ -20,6 +21,27 @@
   let editingEnf = $state(false);
   let enfLevel = $state('hard');
   let enfSaved = $state(false);
+  let editingModel = $state(false);
+  let modelSel = $state('opus');
+  let modelSaved = $state(false);
+
+  $effect(() => {
+    modelSel = app.state?.model ?? 'opus';
+  });
+
+  async function saveModel() {
+    try {
+      await api.setModel(modelSel);
+      modelSaved = true;
+      setTimeout(() => {
+        modelSaved = false;
+        editingModel = false;
+      }, 1200);
+      await app.refresh();
+    } catch (e) {
+      app.error = String(e);
+    }
+  }
 
   $effect(() => {
     enfLevel = app.state?.kiosk_level ?? 'hard';
@@ -148,6 +170,9 @@
         <button class="ghost mono-ghost" onclick={() => (editingEnf = !editingEnf)}>
           <Lock size={11} /> enforcement: {app.state?.kiosk_level ?? 'hard'}
         </button>
+        <button class="ghost mono-ghost" onclick={() => (editingModel = !editingModel)}>
+          <Cpu size={11} /> model: {app.state?.model ?? 'opus'}
+        </button>
         {#if !app.state?.schedule_paused}
           <button class="ghost mono-ghost" onclick={pauseSched}><Pause size={11} /> pause schedule</button>
         {/if}
@@ -156,7 +181,15 @@
         <div class="enf-edit">
           <EnforcementPicker bind:value={enfLevel} />
           <div class="enf-actions">
-            <button class="ghost mono-ghost" onclick={saveEnf}>{enfSaved ? 'saved ✓' : 'apply'}</button>
+            <button class="ghost mono-ghost" onclick={saveEnf}>{enfSaved ? 'saved' : 'apply'}</button>
+          </div>
+        </div>
+      {/if}
+      {#if editingModel}
+        <div class="enf-edit">
+          <ModelPicker bind:value={modelSel} />
+          <div class="enf-actions">
+            <button class="ghost mono-ghost" onclick={saveModel}>{modelSaved ? 'saved' : 'apply'}</button>
           </div>
         </div>
       {/if}

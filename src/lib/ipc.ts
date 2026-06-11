@@ -22,6 +22,7 @@ export interface AppStateView {
   enforcement_disarmed: boolean;
   schedule_paused: boolean;
   kiosk_level: 'advisory' | 'firm' | 'hard';
+  model: 'opus' | 'sonnet' | 'haiku';
 }
 
 export interface QuizQuestionView {
@@ -146,11 +147,18 @@ const realApi = {
   markFrontendReady: () => invoke<void>('mark_frontend_ready'),
   getAppState: () => invoke<AppStateView>('get_app_state'),
   checkAgent: () => invoke<boolean>('check_agent'),
-  completeSetup: (hour: number, minute: number, escapePhrase: string, kioskLevel = 'hard') =>
+  completeSetup: (
+    hour: number,
+    minute: number,
+    escapePhrase: string,
+    kioskLevel = 'hard',
+    model = 'opus'
+  ) =>
     invoke<AppStateView>('complete_setup', {
-      input: { hour, minute, escape_phrase: escapePhrase, kiosk_level: kioskLevel },
+      input: { hour, minute, escape_phrase: escapePhrase, kiosk_level: kioskLevel, model },
     }),
   setKioskLevel: (level: string) => invoke<void>('set_kiosk_level', { level }),
+  setModel: (model: string) => invoke<void>('set_model', { model }),
   updateSchedule: (hour: number, minute: number) =>
     invoke<void>('update_schedule', { hour, minute }),
   pauseSchedule: () => invoke<void>('pause_schedule'),

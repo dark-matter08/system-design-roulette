@@ -88,12 +88,11 @@ pub fn run() {
             let conn = db::open(&data_dir.join("roulette.db"))?;
             db::seed_concepts(&conn, SEED_CONCEPTS)?;
             let codex_bin = resolve_codex_bin(&conn);
-            // Primary model for course generation: config 'model' (default opus),
-            // SDR_MODEL env wins for testing.
-            let model = std::env::var("SDR_MODEL")
-                .ok()
-                .or_else(|| db::get_config(&conn, "model").ok().flatten())
-                .unwrap_or_else(|| "opus".to_string());
+            // Primary model for course generation: config 'model' (default opus).
+            // Held behind Arc<Mutex> so settings changes apply live.
+            let model = std::sync::Arc::new(Mutex::new(
+                db::get_config(&conn, "model").ok().flatten().unwrap_or_else(|| "opus".to_string()),
+            ));
             // Live agent-activity feed: generator -> broadcast -> gen:log events.
             let (log_tx, mut log_rx) = tokio::sync::broadcast::channel::<String>(64);
             {
@@ -203,6 +202,7 @@ pub fn run() {
             commands::complete_setup,
             commands::update_schedule,
             commands::set_kiosk_level,
+            commands::set_model,
             commands::pause_schedule,
             commands::resume_schedule,
             commands::start_session,

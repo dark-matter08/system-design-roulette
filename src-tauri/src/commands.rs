@@ -29,6 +29,27 @@ pub struct AppStateView {
     pub schedule_paused: bool,
     /// Kiosk strictness: 'advisory' | 'firm' | 'hard'.
     pub kiosk_level: String,
+    /// Course-generation model: 'opus' | 'sonnet' | 'haiku'.
+    pub model: String,
+}
+
+fn valid_model(model: &str) -> bool {
+    matches!(model, "opus" | "sonnet" | "haiku")
+}
+
+/// Change the course-generation model. Applies to the NEXT generation —
+/// in-flight calls keep the model they started with.
+#[tauri::command]
+pub fn set_model(state: State<'_, AppState>, model: String) -> CmdResult<()> {
+    if !valid_model(&model) {
+        return Err(format!("unknown model: {model}"));
+    }
+    {
+        let conn = state.db.0.lock().unwrap();
+        db::set_config(&conn, "model", &model).map_err(err)?;
+    }
+    *state.generator.model.lock().unwrap() = model;
+    Ok(())
 }
 
 fn valid_kiosk_level(level: &str) -> bool {
@@ -88,6 +109,7 @@ pub fn get_app_state(state: State<'_, AppState>) -> CmdResult<AppStateView> {
         enforcement_disarmed,
         schedule_paused,
         kiosk_level,
+        model: state.generator.current_model(),
     })
 }
 
@@ -143,6 +165,8 @@ pub struct SetupInput {
     pub escape_phrase: String,
     #[serde(default)]
     pub kiosk_level: Option<String>,
+    #[serde(default)]
+    pub model: Option<String>,
 }
 
 #[tauri::command]
@@ -165,6 +189,12 @@ pub async fn complete_setup(
             return Err(format!("unknown kiosk level: {level}"));
         }
         db::set_config(&conn, "kiosk_level", level).map_err(err)?;
+        let model = input.model.as_deref().unwrap_or("opus");
+        if !valid_model(model) {
+            return Err(format!("unknown model: {model}"));
+        }
+        db::set_config(&conn, "model", model).map_err(err)?;
+        *state.generator.model.lock().unwrap() = model.to_string();
         db::set_config(&conn, "onboarded", "1").map_err(err)?;
         // Day-1 course generates immediately so the first session is instant.
         db::jobs::enqueue(&conn, "course", &today).map_err(err)?;

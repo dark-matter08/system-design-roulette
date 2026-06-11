@@ -117,6 +117,7 @@ function session(): SessionView {
 let setupCompleted = false;
 let mockPaused = params.has('paused');
 let mockKioskLevel = (params.get('kiosk') ?? 'hard') as AppStateView['kiosk_level'];
+let mockModel = (params.get('model') ?? 'opus') as AppStateView['model'];
 
 function appState(): AppStateView {
   const inSetup = location.search.includes('setup') && !setupCompleted;
@@ -132,6 +133,7 @@ function appState(): AppStateView {
     enforcement_disarmed: params.has('disarmed'),
     schedule_paused: mockPaused,
     kiosk_level: mockKioskLevel,
+    model: mockModel,
   };
 }
 
@@ -220,6 +222,9 @@ export const mockApi = {
   updateSchedule: async () => {},
   setKioskLevel: async (level: string) => {
     mockKioskLevel = level as AppStateView['kiosk_level'];
+  },
+  setModel: async (model: string) => {
+    mockModel = model as AppStateView['model'];
   },
   pauseSchedule: async () => {
     mockPaused = true;

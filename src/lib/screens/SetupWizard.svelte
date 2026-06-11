@@ -6,10 +6,12 @@
   import StatusLED from '../components/StatusLED.svelte';
   import TimePicker from '../components/TimePicker.svelte';
   import EnforcementPicker from '../components/EnforcementPicker.svelte';
+  import ModelPicker from '../components/ModelPicker.svelte';
   import { Clock, Zap, Lock, Rocket, X } from 'lucide-svelte';
 
   let time = $state('19:00');
   let kioskLevel = $state('hard');
+  let model = $state('opus');
   let phrase = $state('I am choosing to skip my training today and I accept the broken streak');
   let phrase2 = $state('');
   let agentStatus = $state<'idle' | 'checking' | 'ok' | 'fail'>('idle');
@@ -34,7 +36,7 @@
     const [h, m] = time.split(':').map(Number);
     submitting = true;
     try {
-      await api.completeSetup(h, m, phrase.trim(), kioskLevel);
+      await api.completeSetup(h, m, phrase.trim(), kioskLevel, model);
       await app.refresh();
     } catch (e) {
       error = String(e);
@@ -86,6 +88,8 @@
                 <button class="ghost mono-ghost" onclick={checkAgent}>run healthcheck</button>
               {/if}
             </div>
+            <div class="meta-label" style="margin-top: 14px;">COURSE_MODEL — who writes your lessons</div>
+            <ModelPicker bind:value={model} />
           {/snippet}
         </NodeCard>
       </div>
