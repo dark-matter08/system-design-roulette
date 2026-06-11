@@ -4,6 +4,7 @@
   import ClusterBar from '../components/ClusterBar.svelte';
   import NodeCard from '../components/NodeCard.svelte';
   import StatusLED from '../components/StatusLED.svelte';
+  import { Check, ArrowUpRight, Plus, Headphones } from 'lucide-svelte';
 
   const session = $derived(app.session);
   const skipped = $derived(session?.status === 'skipped');
@@ -67,15 +68,15 @@
       </div>
       <div class="actions">
         <button class="cta mono-cta" onclick={openResources}>
-          {resourcesOpened ? '✓ egress queue flushed' : '⇡ open reading list in browser'}
+          {#if resourcesOpened}<Check size={13} />{:else}<ArrowUpRight size={13} />{/if}{resourcesOpened ? 'egress queue flushed' : 'open reading list in browser'}
         </button>
         <button class="ghost mono-ghost" onclick={() => (app.screen = 'dashboard')}>cluster overview</button>
       </div>
       <button class="ghost mono-ghost extend" onclick={extend}>
-        ▲ extend session — one more topic (voluntary, no lock)
+        <Plus size={11} /> extend session — one more topic (voluntary, no lock)
       </button>
       <button class="ghost mono-ghost audio-toggle" onclick={toggleAudio}>
-        🎧 audio lesson tomorrow: {audioOn ? 'ON — script pre-renders overnight' : 'off'}
+        <Headphones size={11} /> audio lesson tomorrow: {audioOn ? 'ON — script pre-renders overnight' : 'off'}
       </button>
     {/if}
   </div>

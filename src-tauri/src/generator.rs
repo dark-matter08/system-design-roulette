@@ -407,7 +407,7 @@ impl Generator {
         model: &str,
     ) -> Result<String> {
         use tokio::io::{AsyncBufReadExt, BufReader};
-        self.log(format!("⇢ spawning agent · model {model}"));
+        self.log(format!("spawn: agent · model {model}"));
         let mut child = self
             .claude_cmd(prompt, web_tools, model, true)
             .spawn()
@@ -438,13 +438,13 @@ impl Generator {
                                         .as_str()
                                         .or_else(|| block["input"]["url"].as_str())
                                         .unwrap_or("");
-                                    me.log(format!("⚒ {name}: {}", detail.chars().take(80).collect::<String>()));
+                                    me.log(format!("tool: {name} {}", detail.chars().take(80).collect::<String>()));
                                 }
                                 Some("text") => {
                                     let n = block["text"].as_str().map(|t| t.len()).unwrap_or(0);
                                     drafted += n;
                                     if n > 200 {
-                                        me.log(format!("✍ drafting… {} chars written", drafted));
+                                        me.log(format!("draft: {} chars written", drafted));
                                     }
                                 }
                                 _ => {}
@@ -463,17 +463,17 @@ impl Generator {
 
         match tokio::time::timeout(timeout, read_fut).await {
             Ok(Ok((Some(result), status))) if status.success() => {
-                self.log(format!("✓ agent returned {} chars", result.len()));
+                self.log(format!("done: agent returned {} chars", result.len()));
                 Ok(result)
             }
             Ok(Ok((_, status))) => {
                 let err = err_task.await.unwrap_or_default();
-                self.log("✗ agent exited without a result".to_string());
+                self.log("fail: agent exited without a result".to_string());
                 Err(GenError::BadExit(status.code().unwrap_or(-1), err.chars().take(2000).collect()))
             }
             Ok(Err(e)) => Err(GenError::Io(e)),
             Err(_) => {
-                self.log(format!("✗ agent timed out after {}s", timeout.as_secs()));
+                self.log(format!("fail: agent timed out after {}s", timeout.as_secs()));
                 Err(GenError::Timeout(timeout))
             }
         }

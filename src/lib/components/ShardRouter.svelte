@@ -7,6 +7,8 @@
    * as today's topic. The winner is pre-decided (chosenIndex) — the election
    * is theater with a guaranteed outcome, exactly like the wheel was.
    */
+  import { Zap, Crown, X, ArrowDown, CircleCheck } from 'lucide-svelte';
+
   let {
     pool,
     chosenIndex,
@@ -78,13 +80,13 @@
 <div class="router">
   <div class="ingress mono" class:active={phase === 'election' || phase === 'duel'}>
     {#if phase === 'idle'}
-      <span class="ing-label">⇣ {pool.length} shards standing for election</span>
+      <span class="ing-label"><ArrowDown size={10} /> {pool.length} shards standing for election</span>
     {:else if phase === 'duel'}
-      <span class="ing-label duel">⚡ FINAL ROUND — TERM {term} · 2 candidates</span>
+      <span class="ing-label duel"><Zap size={10} /> FINAL ROUND — TERM {term} · 2 candidates</span>
     {:else if phase === 'done'}
-      <span class="ing-label done">★ LEADER ELECTED — TERM {term}</span>
+      <span class="ing-label done"><Crown size={10} /> LEADER ELECTED — TERM {term}</span>
     {:else}
-      <span class="ing-label live">⚡ ELECTION — TERM {term} · {remaining} candidates remain</span>
+      <span class="ing-label live"><Zap size={10} /> ELECTION — TERM {term} · {remaining} candidates remain</span>
     {/if}
     <svg class="ing-pipe" viewBox="0 0 100 26" preserveAspectRatio="none" aria-hidden="true">
       <path d="M 50 0 L 50 26" />
@@ -109,8 +111,8 @@
         <div class="shard-top">
           <span class="led"></span>
           <span class="sid">shard-{String(i).padStart(2, '0')}</span>
-          {#if states[i] === 'out'}<span class="verdict">✗ 503</span>{/if}
-          {#if states[i] === 'winner'}<span class="verdict win">★ leader</span>{/if}
+          {#if states[i] === 'out'}<span class="verdict"><X size={9} /> 503</span>{/if}
+          {#if states[i] === 'winner'}<span class="verdict win"><Crown size={9} /> leader</span>{/if}
         </div>
         <div class="stitle">{title}</div>
       </div>

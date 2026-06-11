@@ -173,7 +173,7 @@
     <span class="stat ok">200 OK: {served}</span>
     <span class="stat err">DLQ: {dlq}</span>
     <span class="stat warn">cache misses: {cacheMisses}</span>
-    <span class="stat" class:err={breakerOpen}>{breakerOpen ? '⚡ CIRCUIT BREAKER OPEN — failing fast' : 'breaker: closed'}</span>
+    <span class="stat" class:err={breakerOpen}>{breakerOpen ? 'CIRCUIT BREAKER OPEN — failing fast' : 'breaker: closed'}</span>
   </div>
 </div>
 

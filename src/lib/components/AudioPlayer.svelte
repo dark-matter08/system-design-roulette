@@ -6,6 +6,7 @@
    */
   import { onDestroy } from 'svelte';
   import { isTauri } from '../ipc';
+  import { SkipBack, SkipForward, Play, Pause, GraduationCap, Presentation, AudioLines } from 'lucide-svelte';
 
   interface Line {
     speaker: string;
@@ -96,20 +97,20 @@
 
 <div class="player">
   <div class="controls">
-    <button class="pbtn mono" onclick={() => skip(-1)} aria-label="previous line">⏮</button>
-    <button class="pbtn main mono" onclick={toggle}>{playing ? '⏸' : '▶'}</button>
-    <button class="pbtn mono" onclick={() => skip(1)} aria-label="next line">⏭</button>
+    <button class="pbtn mono" onclick={() => skip(-1)} aria-label="previous line"><SkipBack size={12} /></button>
+    <button class="pbtn main mono" onclick={toggle}>{#if playing}<Pause size={13} />{:else}<Play size={13} />{/if}</button>
+    <button class="pbtn mono" onclick={() => skip(1)} aria-label="next line"><SkipForward size={12} /></button>
     <button class="pbtn mono rate" onclick={cycleRate}>{rate}×</button>
   </div>
   <div class="now">
     <span class="who mono" class:student={lines[idx]?.speaker === 'student'}>
-      {lines[idx]?.speaker === 'student' ? '🎓 student' : '👨‍🏫 teacher'}
+      {#if lines[idx]?.speaker === 'student'}<GraduationCap size={11} /> student{:else}<Presentation size={11} /> teacher{/if}
     </span>
     <span class="line-text">{lines[idx]?.text}</span>
   </div>
   <div class="meta mono">
     <span>{idx + 1}/{lines.length}</span>
-    <span class="eng">{engine === 'vibevoice' ? '◉ vibevoice' : '◉ system speech'}</span>
+    <span class="eng"><AudioLines size={10} /> {engine === 'vibevoice' ? 'vibevoice' : 'system speech'}</span>
   </div>
 </div>
 

@@ -4,6 +4,7 @@
   import ClusterBar from '../components/ClusterBar.svelte';
   import NodeCard from '../components/NodeCard.svelte';
   import MetaBadge from '../components/MetaBadge.svelte';
+  import { Check, X, Circle, TriangleAlert, ArrowRight } from 'lucide-svelte';
 
   let { data = null }: { data?: ReviewData | null } = $props();
 
@@ -56,12 +57,12 @@
           trace {idx + 1}/{review.items.length} · error budget {Math.round(review.score * 100)}%
         </span>
         {#if review.self_assess}
-          <MetaBadge tone="amber">{#snippet children()}⚠ grader offline — self-assess{/snippet}</MetaBadge>
+          <MetaBadge tone="amber">{#snippet children()}<TriangleAlert size={10} /> grader offline — self-assess{/snippet}</MetaBadge>
         {/if}
       </div>
 
       <NodeCard
-        icon={current.correct === false ? '✗' : current.correct === true ? '✓' : '◌'}
+        Icon={current.correct === false ? X : current.correct === true ? Check : Circle}
         name={`response trace — /quiz/${idx + 1}`}
         badge={current.correct === true
           ? '200 OK'
@@ -98,7 +99,7 @@
 
       <div class="actions">
         <button class="cta mono-cta" onclick={next} disabled={dwell > 0}>
-          {dwell > 0 ? `read · ${dwell}s` : isLast ? '→ to the wheel' : '→ next trace'}
+          {dwell > 0 ? `read · ${dwell}s` : isLast ? 'to the rack' : 'next trace'}{#if dwell <= 0}<ArrowRight size={13} />{/if}
         </button>
       </div>
     </div>

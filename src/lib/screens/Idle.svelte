@@ -6,6 +6,7 @@
   import MetaBadge from '../components/MetaBadge.svelte';
   import TimePicker from '../components/TimePicker.svelte';
   import EnforcementPicker from '../components/EnforcementPicker.svelte';
+  import { Clock, Lock, Play, Pause, Rocket, LayoutDashboard, CalendarClock } from 'lucide-svelte';
 
   const owed = $derived(app.state?.owed ?? false);
   const streak = $derived(app.session?.streak ?? 0);
@@ -107,21 +108,21 @@
         <MetaBadge tone="teal">{#snippet children()}● uptime {streak}d{/snippet}</MetaBadge>
         <MetaBadge tone="violet">{#snippet children()}est. {isAudit ? '15' : '38'} min{/snippet}</MetaBadge>
       </div>
-      <button class="cta mono-cta" onclick={begin}>▲ ack &amp; begin session</button>
+      <button class="cta mono-cta" onclick={begin}><Rocket size={14} /> ack &amp; begin session</button>
     {:else}
       <h1>Cluster idle</h1>
       <p class="sub">Next session deploys automatically. Showing up is the whole job.</p>
       <div class="node-wrap">
         {#if app.state?.schedule_paused}
-          <NodeCard icon="⏸" name="cron-scheduler" badge="paused" badgeTone="red" accent="var(--led-err)">
+          <NodeCard Icon={Pause} name="cron-scheduler" badge="paused" badgeTone="red" accent="var(--led-err)">
             {#snippet children()}
               <div class="meta-label">SCHEDULER PAUSED</div>
               <div class="paused-note">No sessions will fire — launchd agent removed.</div>
-              <button class="cta mono-cta resume-sched" onclick={resumeSched}>▶ resume schedule</button>
+              <button class="cta mono-cta resume-sched" onclick={resumeSched}><Play size={12} /> resume schedule</button>
             {/snippet}
           </NodeCard>
         {:else}
-          <NodeCard icon="⏱" name="cron-scheduler" badge=":launchd" badgeTone="amber">
+          <NodeCard Icon={Clock} name="cron-scheduler" badge=":launchd" badgeTone="amber">
             {#snippet children()}
               <div class="meta-label">NEXT_FIRE — T-minus</div>
               <div class="count mono">{countdown}</div>
@@ -135,7 +136,7 @@
       </div>
       {#if app.session?.status === 'in_progress'}
         <button class="cta mono-cta resume" onclick={() => app.resumeSession()}>
-          ▶ resume session — paused at {app.session.step}
+          <Play size={13} /> resume session — paused at {app.session.step}
         </button>
       {/if}
       <div class="actions">
@@ -145,10 +146,10 @@
         {/if}
         <button class="ghost mono-ghost" onclick={() => (editing = !editing)}>reschedule</button>
         <button class="ghost mono-ghost" onclick={() => (editingEnf = !editingEnf)}>
-          🔒 enforcement: {app.state?.kiosk_level ?? 'hard'}
+          <Lock size={11} /> enforcement: {app.state?.kiosk_level ?? 'hard'}
         </button>
         {#if !app.state?.schedule_paused}
-          <button class="ghost mono-ghost" onclick={pauseSched}>⏸ pause schedule</button>
+          <button class="ghost mono-ghost" onclick={pauseSched}><Pause size={11} /> pause schedule</button>
         {/if}
       </div>
       {#if editingEnf}

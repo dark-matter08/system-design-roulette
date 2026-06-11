@@ -2,14 +2,17 @@
   import type { Snippet } from 'svelte';
 
   let {
-    icon = '',
+    Icon = undefined,
     name,
     badge = '',
     badgeTone = 'muted',
     accent = 'var(--node-border)',
     children,
   }: {
-    icon?: string;
+    /** Lucide icon component (e.g. Clock, Lock). lucide-svelte ships
+     *  Svelte-4-style classes, so the prop stays loosely typed. */
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    Icon?: any;
     name: string;
     badge?: string;
     badgeTone?: 'teal' | 'amber' | 'violet' | 'red' | 'muted';
@@ -28,7 +31,9 @@
 
 <div class="node" style="border-color: {accent};">
   <div class="node-head">
-    <span class="node-name">{icon ? icon + ' ' : ''}{name}</span>
+    <span class="node-name">
+      {#if Icon}<span class="node-icon"><Icon size={12} /></span>{/if}{name}
+    </span>
     {#if badge}
       <span class="node-badge" style="color: {tones[badgeTone].fg}; background: {tones[badgeTone].bg};">
         {badge}
@@ -58,6 +63,13 @@
     font-family: var(--font-mono);
     font-size: 11px;
     color: var(--muted);
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .node-icon {
+    display: inline-flex;
+    color: var(--faint);
   }
   .node-badge {
     font-family: var(--font-mono);

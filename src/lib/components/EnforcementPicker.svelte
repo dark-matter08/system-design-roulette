@@ -1,6 +1,8 @@
 <script lang="ts">
   /** Kiosk strictness selector with honest, plain-language explanations and
    *  a hard-mode warning. Used in setup and on the idle screen. */
+  import { TriangleAlert } from 'lucide-svelte';
+
   let {
     value = $bindable('hard'),
   }: { value?: string } = $props();
@@ -54,7 +56,7 @@
 {/each}
 {#if value === 'hard'}
   <div class="hard-warn mono">
-    ⚠ HARD means it: while locked, this machine does nothing else. If the app ever misbehaves
+    <TriangleAlert size={11} /> HARD means it: while locked, this machine does nothing else. If the app ever misbehaves
     mid-lock, recovery needs another machine or Safe Mode (see README → Recovery). The
     white-screen guard and the ~/sdr-unlock back door remain as last resorts.
   </div>

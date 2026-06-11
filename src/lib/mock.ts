@@ -272,13 +272,13 @@ export const mockApi = {
   ensureCourse: async (): Promise<CourseView> => {
     // Demo the live agent log the way a real generation streams it.
     const feed = [
-      '⇢ spawning agent · model opus',
-      '⚒ WebSearch: consistent hashing virtual nodes production',
-      '⚒ WebFetch: https://blog.discord.com/scaling-elixir',
-      '⚒ WebSearch: jump hash vs ring hash benchmark',
-      '✍ drafting… 2,400 chars written',
-      '✍ drafting… 9,100 chars written',
-      '✓ agent returned 21,348 chars',
+      'spawn: agent · model opus',
+      'tool: WebSearch consistent hashing virtual nodes production',
+      'tool: WebFetch https://blog.discord.com/scaling-elixir',
+      'tool: WebSearch jump hash vs ring hash benchmark',
+      'draft: 2,400 chars written',
+      'draft: 9,100 chars written',
+      'done: agent returned 21,348 chars',
     ];
     for (const line of feed) {
       mockEmit('gen:log', line);

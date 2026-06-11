@@ -6,6 +6,7 @@
   import StatusLED from '../components/StatusLED.svelte';
   import TimePicker from '../components/TimePicker.svelte';
   import EnforcementPicker from '../components/EnforcementPicker.svelte';
+  import { Clock, Zap, Lock, Rocket, X } from 'lucide-svelte';
 
   let time = $state('19:00');
   let kioskLevel = $state('hard');
@@ -54,7 +55,7 @@
 
     <div class="topo">
       <div class="row">
-        <NodeCard icon="⏱" name="cron-scheduler" badge=":launchd" badgeTone="amber">
+        <NodeCard Icon={Clock} name="cron-scheduler" badge=":launchd" badgeTone="amber">
           {#snippet children()}
             <div class="meta-label">FIRE_AT — daily trigger</div>
             <div class="time-row">
@@ -65,7 +66,7 @@
         </NodeCard>
 
         <NodeCard
-          icon="⚡"
+          Icon={Zap}
           name="agent-backend"
           badge={agentStatus === 'ok' ? 'healthy' : agentStatus === 'fail' ? 'degraded' : 'unknown'}
           badgeTone={agentStatus === 'ok' ? 'teal' : agentStatus === 'fail' ? 'red' : 'muted'}
@@ -96,7 +97,7 @@
       </svg>
 
       <NodeCard
-        icon="🔒"
+        Icon={Lock}
         name="enforcement-service"
         badge={kioskLevel === 'hard' ? 'kiosk · no mercy' : kioskLevel === 'firm' ? 'kiosk · level 1000' : 'advisory'}
         badgeTone={kioskLevel === 'hard' ? 'red' : kioskLevel === 'firm' ? 'violet' : 'teal'}
@@ -128,11 +129,11 @@
       </div>
     </div>
 
-    {#if error}<p class="error mono">✗ {error}</p>{/if}
+    {#if error}<p class="error mono"><X size={12} /> {error}</p>{/if}
 
     <div class="deploy-row">
       <button class="cta mono-cta" onclick={finish} disabled={submitting}>
-        {submitting ? '… deploying' : '▲ deploy to prod'}
+        {#if !submitting}<Rocket size={14} />{/if}{submitting ? '… deploying' : 'deploy to prod'}
       </button>
       <span class="hint">
         writes launchd plist · pre-generates day-1 course<br />

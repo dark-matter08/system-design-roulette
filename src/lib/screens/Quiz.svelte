@@ -4,6 +4,7 @@
   import ClusterBar from '../components/ClusterBar.svelte';
   import NodeCard from '../components/NodeCard.svelte';
   import StatusLED from '../components/StatusLED.svelte';
+  import { Inbox, TriangleAlert, Zap, ArrowUp } from 'lucide-svelte';
 
   let questions = $state<QuizQuestionView[]>([]);
   let idx = $state(0);
@@ -62,10 +63,10 @@
       <div class="progress-track"><div class="progress-fill" style="width: {progress}%"></div></div>
       <div class="spacer"></div>
       {#if isAudit && app.session?.plan_reason}
-        <div class="audit-note mono">⚡ POP QUIZ — {app.session.plan_reason}</div>
+        <div class="audit-note mono"><Zap size={11} /> POP QUIZ — {app.session.plan_reason}</div>
       {/if}
       <NodeCard
-        icon="⇣"
+        Icon={Inbox}
         name={`incoming request — POST /quiz/${idx + 1} of ${questions.length}`}
         badge={current.origin === 'carryover' ? 'retry · from DLQ' : current.kind === 'mcq' ? 'multiple choice' : 'free text'}
         badgeTone={current.origin === 'carryover' ? 'amber' : 'muted'}
@@ -73,7 +74,7 @@
       >
         {#snippet children()}
           {#if current.origin === 'carryover'}
-            <div class="dlq-note mono">⚠ you failed this before — it returns until you pass it</div>
+            <div class="dlq-note mono"><TriangleAlert size={11} /> you failed this before — it returns until you pass it</div>
           {/if}
           <h2 class="prompt">{current.prompt}</h2>
           {#if current.kind === 'mcq' && current.choices}
@@ -90,7 +91,7 @@
           {/if}
           <div class="actions">
             <button class="cta mono-cta" onclick={submit} disabled={!answer.trim()}>
-              {idx === questions.length - 1 ? '⇡ send & grade all' : '⇡ send response'}
+              <ArrowUp size={13} />{idx === questions.length - 1 ? 'send & grade all' : 'send response'}
             </button>
           </div>
         {/snippet}

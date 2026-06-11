@@ -6,6 +6,7 @@
   import StatusLED from '../components/StatusLED.svelte';
   import MetaBadge from '../components/MetaBadge.svelte';
   import AgentLog from '../components/AgentLog.svelte';
+  import { Zap, ArrowRight, ArrowLeft } from 'lucide-svelte';
 
   let data = $state<RouletteView | null>(null);
   let wheel = $state<ReturnType<typeof ShardRouter>>();
@@ -41,7 +42,7 @@
   <ClusterBar route="topic-selector" status="weighted-random · no repeats until pool drains" tone="ok" />
   {#if !app.session?.locked}
     <div class="back-row">
-      <button class="ghost mono-ghost" onclick={() => app.leaveSession()}>← back — resume later</button>
+      <button class="ghost mono-ghost" onclick={() => app.leaveSession()}><ArrowLeft size={11} /> back — resume later</button>
     </div>
   {/if}
   {#if !data}
@@ -60,13 +61,13 @@
         onLanded={landed}
       />
       {#if phase === 'ready'}
-        <button class="cta mono-cta" onclick={spin}>⚡ run leader election</button>
+        <button class="cta mono-cta" onclick={spin}><Zap size={13} /> run leader election</button>
       {:else if phase === 'spinning'}
         <div class="mono dim">electing…</div>
       {:else if phase === 'landed'}
         <h1 class="topic">{data.concept_title}</h1>
         <MetaBadge tone="violet">{#snippet children()}shard: {data?.concept_category}{/snippet}</MetaBadge>
-        <button class="cta mono-cta" onclick={toCourse}>→ start the course</button>
+        <button class="cta mono-cta" onclick={toCourse}>start the course <ArrowRight size={13} /></button>
       {:else}
         <h1 class="topic">{data.concept_title}</h1>
         <div class="gen">

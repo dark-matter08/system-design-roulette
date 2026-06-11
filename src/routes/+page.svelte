@@ -54,7 +54,7 @@
     <Dashboard />
   {/if}
 
-  {#if app.session?.locked}
+  {#if app.session?.status === 'in_progress'}
     <EscapeHatch />
   {/if}
 

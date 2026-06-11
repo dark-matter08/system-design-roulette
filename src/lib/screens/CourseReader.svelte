@@ -4,6 +4,7 @@
   import Markdown from '../components/Markdown.svelte';
   import AudioPlayer from '../components/AudioPlayer.svelte';
   import AgentLog from '../components/AgentLog.svelte';
+  import { BookOpen, Headphones, Zap, Check, Hourglass, X, ArrowUp } from 'lucide-svelte';
 
   let course = $state<CourseView | null>(null);
 
@@ -164,7 +165,7 @@
     <header class="reader-head">
       <div class="title-row">
         <div class="title-left">
-          <span class="node-tag mono">📖 course-reader</span>
+          <span class="node-tag mono"><BookOpen size={11} /> course-reader</span>
           <h2>{course.title}</h2>
           {#if course.source === 'fallback'}
             <span class="badge warn">bundled — agent was unreachable</span>
@@ -172,14 +173,14 @@
         </div>
         <div class="head-right">
           <button class="ghost mono-ghost listen" onclick={loadAudio} disabled={audioLoading}>
-            {audioLoading ? '… writing script' : audio ? '🎧 listening' : '🎧 listen'}
+            <Headphones size={11} />{audioLoading ? 'writing script…' : audio ? 'listening' : 'listen'}
           </button>
           <div class="font-ctl mono">
             <button onclick={() => bumpFont(-1)} aria-label="smaller text">A−</button>
             <button onclick={() => bumpFont(1)} aria-label="larger text">A+</button>
           </div>
           {#if !done}
-            <button class="ghost mono-ghost prove" onclick={openExit}>⚡ prove it — exit early</button>
+            <button class="ghost mono-ghost prove" onclick={openExit}><Zap size={11} /> prove it — exit early</button>
           {/if}
           <span class="ttl mono" class:done>
             {done ? 'TTL 0 — unlocked' : `TTL ${mm}:${String(ss).padStart(2, '0')}`}
@@ -191,7 +192,7 @@
         <AudioPlayer lines={audio.lines} engine={audio.engine} />
         <div style="height: 12px"></div>
       {:else if audioErr}
-        <p class="mono audio-err">✗ {audioErr}</p>
+        <p class="mono audio-err"><X size={11} /> {audioErr}</p>
       {/if}
     </header>
 
@@ -225,7 +226,7 @@
           {/if}
           <div class="finish-row">
             <button class="cta mono-cta" onclick={finish} disabled={!done}>
-              {done ? '✓ complete session' : 'keep reading — TTL running'}
+              {#if done}<Check size={13} />{/if}{done ? 'complete session' : 'keep reading — TTL running'}
             </button>
           </div>
         </article>
@@ -243,7 +244,7 @@
           {#if exitLoading}
             <p class="mono dim">generating exit check from today's course…</p>
           {:else if cooldown > 0}
-            <p class="mono cool">⏳ breaker cooling down — retry in {cooldown}s</p>
+            <p class="mono cool"><Hourglass size={12} /> breaker cooling down — retry in {cooldown}s</p>
           {:else}
             {#each exitQs as q, qi}
               <div class="exit-q">
@@ -268,7 +269,7 @@
                 onclick={submitExit}
                 disabled={Object.keys(exitAnswers).length < exitQs.length || exitQs.length === 0}
               >
-                ⇡ submit — unlock early
+                <ArrowUp size={13} /> submit — unlock early
               </button>
             </div>
           {/if}
