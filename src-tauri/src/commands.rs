@@ -27,6 +27,26 @@ pub struct AppStateView {
     pub enforcement_disarmed: bool,
     /// Scheduler paused: no launchd agent, no owed sessions, until resumed.
     pub schedule_paused: bool,
+    /// Kiosk strictness: 'advisory' | 'firm' | 'hard'.
+    pub kiosk_level: String,
+}
+
+fn valid_kiosk_level(level: &str) -> bool {
+    matches!(level, "advisory" | "firm" | "hard")
+}
+
+/// Change kiosk strictness. Refused while locked — strictness can't be
+/// downgraded mid-session.
+#[tauri::command]
+pub fn set_kiosk_level(state: State<'_, AppState>, level: String) -> CmdResult<()> {
+    if !valid_kiosk_level(&level) {
+        return Err(format!("unknown kiosk level: {level}"));
+    }
+    if state.locked.load(Ordering::SeqCst) {
+        return Err("cannot change enforcement during a locked session".into());
+    }
+    let conn = state.db.0.lock().unwrap();
+    db::set_config(&conn, "kiosk_level", &level).map_err(err)
 }
 
 /// Called by the webview on boot. Until this fires, the kiosk refuses to
@@ -50,9 +70,12 @@ pub fn get_app_state(state: State<'_, AppState>) -> CmdResult<AppStateView> {
     let enforcement_disarmed = std::env::var_os("HOME")
         .map(|h| std::path::Path::new(&h).join("sdr-unlock").exists())
         .unwrap_or(false);
-    let schedule_paused = {
+    let (schedule_paused, kiosk_level) = {
         let conn = state.db.0.lock().unwrap();
-        matches!(db::get_config(&conn, "schedule_paused"), Ok(Some(v)) if v == "1")
+        (
+            matches!(db::get_config(&conn, "schedule_paused"), Ok(Some(v)) if v == "1"),
+            db::get_config(&conn, "kiosk_level").ok().flatten().unwrap_or_else(|| "hard".into()),
+        )
     };
     Ok(AppStateView {
         onboarded,
@@ -64,6 +87,7 @@ pub fn get_app_state(state: State<'_, AppState>) -> CmdResult<AppStateView> {
         debug_day: state.debug_day,
         enforcement_disarmed,
         schedule_paused,
+        kiosk_level,
     })
 }
 
@@ -117,6 +141,8 @@ pub struct SetupInput {
     pub hour: u32,
     pub minute: u32,
     pub escape_phrase: String,
+    #[serde(default)]
+    pub kiosk_level: Option<String>,
 }
 
 #[tauri::command]
@@ -134,6 +160,11 @@ pub async fn complete_setup(
         db::set_config(&conn, "schedule_hour", &input.hour.to_string()).map_err(err)?;
         db::set_config(&conn, "schedule_minute", &input.minute.to_string()).map_err(err)?;
         db::set_config(&conn, "escape_phrase", input.escape_phrase.trim()).map_err(err)?;
+        let level = input.kiosk_level.as_deref().unwrap_or("hard");
+        if !valid_kiosk_level(level) {
+            return Err(format!("unknown kiosk level: {level}"));
+        }
+        db::set_config(&conn, "kiosk_level", level).map_err(err)?;
         db::set_config(&conn, "onboarded", "1").map_err(err)?;
         // Day-1 course generates immediately so the first session is instant.
         db::jobs::enqueue(&conn, "course", &today).map_err(err)?;

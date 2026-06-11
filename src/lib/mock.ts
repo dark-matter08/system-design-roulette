@@ -116,6 +116,7 @@ function session(): SessionView {
 
 let setupCompleted = false;
 let mockPaused = params.has('paused');
+let mockKioskLevel = (params.get('kiosk') ?? 'hard') as AppStateView['kiosk_level'];
 
 function appState(): AppStateView {
   const inSetup = location.search.includes('setup') && !setupCompleted;
@@ -130,6 +131,7 @@ function appState(): AppStateView {
     debug_day: true,
     enforcement_disarmed: params.has('disarmed'),
     schedule_paused: mockPaused,
+    kiosk_level: mockKioskLevel,
   };
 }
 
@@ -216,6 +218,9 @@ export const mockApi = {
     return appState();
   },
   updateSchedule: async () => {},
+  setKioskLevel: async (level: string) => {
+    mockKioskLevel = level as AppStateView['kiosk_level'];
+  },
   pauseSchedule: async () => {
     mockPaused = true;
   },

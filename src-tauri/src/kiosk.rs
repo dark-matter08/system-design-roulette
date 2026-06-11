@@ -95,6 +95,26 @@ mod mac {
     }
 }
 
+/// Configurable strictness (config `kiosk_level`).
+#[derive(PartialEq, Clone, Copy, Debug)]
+pub enum KioskLevel {
+    /// Window stays on top and nags; nothing is blocked.
+    Advisory,
+    /// Full-screen + refocus + blankers + mute, but Force Quit still works.
+    Firm,
+    /// Everything disabled. Finish, exit check, or break glass.
+    Hard,
+}
+
+pub fn configured_level(state: &AppState) -> KioskLevel {
+    let conn = state.db.0.lock().unwrap();
+    match crate::db::get_config(&conn, "kiosk_level").ok().flatten().as_deref() {
+        Some("advisory") => KioskLevel::Advisory,
+        Some("firm") => KioskLevel::Firm,
+        _ => KioskLevel::Hard,
+    }
+}
+
 /// Engage the kiosk lock on the main window and start the refocus loop.
 pub fn engage(app: &AppHandle, state: &AppState) {
     if state.debug_day {
@@ -111,10 +131,20 @@ pub fn engage(app: &AppHandle, state: &AppState) {
     if state.locked.swap(true, Ordering::SeqCst) {
         return;
     }
-    pause_media(state);
+    let level = configured_level(state);
+    log::info!("kiosk engaging at level {level:?}");
     let Some(window) = app.get_webview_window("main") else {
         return;
     };
+    if level == KioskLevel::Advisory {
+        // Honor system: surface and pin the window, block nothing.
+        let _ = window.show();
+        let _ = window.unminimize();
+        let _ = window.set_always_on_top(true);
+        let _ = window.set_focus();
+        return;
+    }
+    pause_media(state);
     let _ = window.show();
     let _ = window.unminimize();
     let _ = window.set_resizable(false);
@@ -145,14 +175,19 @@ pub fn engage(app: &AppHandle, state: &AppState) {
                 log::error!("kiosk raise failed: {e:?}");
             }
             let r = objc2::exception::catch(std::panic::AssertUnwindSafe(|| unsafe {
-                mac::set_presentation_options(
+                // FIRM keeps Cmd+Tab/Force Quit functional (the refocus loop
+                // makes switching useless but never traps); HARD disables them.
+                let opts = if level == KioskLevel::Hard {
                     mac::HIDE_DOCK
                         | mac::HIDE_MENU_BAR
                         | mac::DISABLE_PROCESS_SWITCHING
                         | mac::DISABLE_FORCE_QUIT
                         | mac::DISABLE_SESSION_TERMINATION
-                        | mac::DISABLE_HIDE_APPLICATION,
-                );
+                        | mac::DISABLE_HIDE_APPLICATION
+                } else {
+                    mac::HIDE_DOCK | mac::HIDE_MENU_BAR
+                };
+                mac::set_presentation_options(opts);
             }));
             if let Err(e) = r {
                 log::error!("kiosk presentation options failed: {e:?}");

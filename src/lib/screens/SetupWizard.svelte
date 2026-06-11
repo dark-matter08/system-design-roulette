@@ -5,8 +5,10 @@
   import NodeCard from '../components/NodeCard.svelte';
   import StatusLED from '../components/StatusLED.svelte';
   import TimePicker from '../components/TimePicker.svelte';
+  import EnforcementPicker from '../components/EnforcementPicker.svelte';
 
   let time = $state('19:00');
+  let kioskLevel = $state('hard');
   let phrase = $state('I am choosing to skip my training today and I accept the broken streak');
   let phrase2 = $state('');
   let agentStatus = $state<'idle' | 'checking' | 'ok' | 'fail'>('idle');
@@ -31,7 +33,7 @@
     const [h, m] = time.split(':').map(Number);
     submitting = true;
     try {
-      await api.completeSetup(h, m, phrase.trim());
+      await api.completeSetup(h, m, phrase.trim(), kioskLevel);
       await app.refresh();
     } catch (e) {
       error = String(e);
@@ -57,7 +59,7 @@
             <div class="meta-label">FIRE_AT — daily trigger</div>
             <div class="time-row">
               <TimePicker bind:value={time} />
-              <span class="hint">local time<br />retry: on-wake</span>
+              <span class="hint">local time · fires daily<br />asleep at fire time? fires on wake<br />powered off? fires at next login</span>
             </div>
           {/snippet}
         </NodeCard>
@@ -93,15 +95,21 @@
         <path d="M 50 38 L 48.6 33 L 51.4 33 Z" class="arrow" />
       </svg>
 
-      <NodeCard icon="🔒" name="enforcement-service" badge="kiosk · level 1000" badgeTone="violet" accent="var(--violet)">
+      <NodeCard
+        icon="🔒"
+        name="enforcement-service"
+        badge={kioskLevel === 'hard' ? 'kiosk · no mercy' : kioskLevel === 'firm' ? 'kiosk · level 1000' : 'advisory'}
+        badgeTone={kioskLevel === 'hard' ? 'red' : kioskLevel === 'firm' ? 'violet' : 'teal'}
+        accent="var(--violet)"
+      >
         {#snippet children()}
           <div class="enf">
             <div>
-              <div class="meta-label">SLO — daily session completion</div>
-              <div class="enf-desc">full-screen lock · ~38 min · no Cmd+Tab, no Force Quit, no mercy</div>
+              <div class="meta-label">SLO — daily session completion · pick your strictness</div>
             </div>
             <div class="enf-io">ingress: cron<br />egress: streak++</div>
           </div>
+          <EnforcementPicker bind:value={kioskLevel} />
         {/snippet}
       </NodeCard>
     </div>

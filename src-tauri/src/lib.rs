@@ -202,6 +202,7 @@ pub fn run() {
             commands::check_agent,
             commands::complete_setup,
             commands::update_schedule,
+            commands::set_kiosk_level,
             commands::pause_schedule,
             commands::resume_schedule,
             commands::start_session,

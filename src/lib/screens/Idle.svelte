@@ -5,6 +5,7 @@
   import NodeCard from '../components/NodeCard.svelte';
   import MetaBadge from '../components/MetaBadge.svelte';
   import TimePicker from '../components/TimePicker.svelte';
+  import EnforcementPicker from '../components/EnforcementPicker.svelte';
 
   const owed = $derived(app.state?.owed ?? false);
   const streak = $derived(app.session?.streak ?? 0);
@@ -15,6 +16,27 @@
   let editing = $state(false);
   let saved = $state(false);
   let newTime = $state('09:00');
+  let editingEnf = $state(false);
+  let enfLevel = $state('hard');
+  let enfSaved = $state(false);
+
+  $effect(() => {
+    enfLevel = app.state?.kiosk_level ?? 'hard';
+  });
+
+  async function saveEnf() {
+    try {
+      await api.setKioskLevel(enfLevel);
+      enfSaved = true;
+      setTimeout(() => {
+        enfSaved = false;
+        editingEnf = false;
+      }, 1200);
+      await app.refresh();
+    } catch (e) {
+      app.error = String(e);
+    }
+  }
 
   $effect(() => {
     newTime = `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
@@ -122,10 +144,21 @@
           <button class="ghost mono-ghost" onclick={begin}>deploy early</button>
         {/if}
         <button class="ghost mono-ghost" onclick={() => (editing = !editing)}>reschedule</button>
+        <button class="ghost mono-ghost" onclick={() => (editingEnf = !editingEnf)}>
+          🔒 enforcement: {app.state?.kiosk_level ?? 'hard'}
+        </button>
         {#if !app.state?.schedule_paused}
           <button class="ghost mono-ghost" onclick={pauseSched}>⏸ pause schedule</button>
         {/if}
       </div>
+      {#if editingEnf}
+        <div class="enf-edit">
+          <EnforcementPicker bind:value={enfLevel} />
+          <div class="enf-actions">
+            <button class="ghost mono-ghost" onclick={saveEnf}>{enfSaved ? 'saved ✓' : 'apply'}</button>
+          </div>
+        </div>
+      {/if}
       {#if editing}
         <div class="edit-row">
           <TimePicker bind:value={newTime} />
@@ -185,6 +218,19 @@
   }
   .resume {
     margin-bottom: 16px;
+  }
+  .enf-edit {
+    width: min(620px, 90vw);
+    margin-top: 16px;
+    background: var(--node-bg);
+    border: 1px solid var(--node-border);
+    border-radius: 10px;
+    padding: 14px 16px;
+  }
+  .enf-actions {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: 10px;
   }
   .paused-note {
     font-size: 12px;
