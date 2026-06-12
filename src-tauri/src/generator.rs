@@ -115,6 +115,11 @@ pub struct Generator {
     /// Quiz and grading stay on sonnet: rubric-bound, latency-sensitive.
     /// Shared + hot-swappable: settings changes apply without a restart.
     pub model: std::sync::Arc<std::sync::Mutex<String>>,
+    /// Which CLI agent is primary: 'claude' | 'codex' | 'custom'.
+    pub agent: std::sync::Arc<std::sync::Mutex<String>>,
+    /// Binary path used when agent == 'custom'. Contract: accepts the prompt
+    /// as its final argument and prints the answer to stdout.
+    pub custom_bin: std::sync::Arc<std::sync::Mutex<String>>,
     /// Live agent-activity lines for the UI (gen:log). None in tests.
     pub log_tx: Option<tokio::sync::broadcast::Sender<String>>,
 }
@@ -163,10 +168,21 @@ impl Generator {
         codex_bin: Option<String>,
         scratch_dir: PathBuf,
         model: std::sync::Arc<std::sync::Mutex<String>>,
+        agent: std::sync::Arc<std::sync::Mutex<String>>,
+        custom_bin: std::sync::Arc<std::sync::Mutex<String>>,
         log_tx: Option<tokio::sync::broadcast::Sender<String>>,
     ) -> Self {
         let _ = std::fs::create_dir_all(&scratch_dir);
-        Self { claude_bin, codex_bin, scratch_dir, model, log_tx }
+        Self { claude_bin, codex_bin, scratch_dir, model, agent, custom_bin, log_tx }
+    }
+
+    /// The primary CLI agent right now (SDR_AGENT env wins for tests).
+    pub fn current_agent(&self) -> String {
+        std::env::var("SDR_AGENT").unwrap_or_else(|_| self.agent.lock().unwrap().clone())
+    }
+
+    pub fn current_custom_bin(&self) -> String {
+        self.custom_bin.lock().unwrap().clone()
     }
 
     /// The course-generation model right now (SDR_MODEL env wins for tests).
@@ -313,6 +329,33 @@ impl Generator {
         }
     }
 
+    /// One attempt on the PRIMARY agent (claude/codex/custom dispatch).
+    async fn run_primary(
+        &self,
+        agent: &str,
+        prompt: &str,
+        web_tools: bool,
+        timeout: Duration,
+        model: &str,
+    ) -> Result<String> {
+        match agent {
+            "codex" => {
+                let bin = self.codex_bin.clone().unwrap_or_else(|| "codex".into());
+                self.log(format!("spawn: codex agent ({bin})"));
+                self.run_codex(&bin, prompt, timeout).await
+            }
+            "custom" => {
+                let bin = self.current_custom_bin();
+                if bin.trim().is_empty() {
+                    return Err(GenError::NoBinary);
+                }
+                self.log(format!("spawn: custom agent ({bin})"));
+                self.run_custom(&bin, prompt, timeout).await
+            }
+            _ => self.run_claude(prompt, web_tools, timeout, model).await,
+        }
+    }
+
     async fn run_with_fallback<T: serde::de::DeserializeOwned>(
         &self,
         prompt: &str,
@@ -320,39 +363,68 @@ impl Generator {
         timeout: Duration,
         model: &str,
     ) -> Result<(T, String)> {
+        let agent = self.current_agent();
         let mut last_err: Option<GenError> = None;
         for attempt in 0..2 {
-            // Retry downgrades to the small model: cheaper, and routes around
-            // primary-model availability/timeout issues.
+            // Claude retries downgrade to the small model; other agents just retry.
             let attempt_model = if attempt == 0 { model } else { SMALL_MODEL };
-            match self.run_claude(prompt, web_tools, timeout, attempt_model).await {
+            match self.run_primary(&agent, prompt, web_tools, timeout, attempt_model).await {
                 Ok(raw) => match parse_json_payload::<T>(&raw) {
-                    Ok(v) => return Ok((v, "claude".into())),
+                    Ok(v) => return Ok((v, agent.clone())),
                     Err(_) => match self.repair_json::<T>(&raw).await {
-                        Ok(v) => return Ok((v, "claude".into())),
+                        Ok(v) => return Ok((v, agent.clone())),
                         Err(e) => last_err = Some(e),
                     },
                 },
                 Err(e) => {
-                    log::warn!("claude attempt {attempt} failed: {e}");
+                    log::warn!("{agent} attempt {attempt} failed: {e}");
                     last_err = Some(e);
                 }
             }
         }
-        if let Some(codex) = &self.codex_bin {
-            match self.run_codex(codex, prompt, timeout).await {
+        // Cross-agent fallback: claude falls back to codex; any other primary
+        // falls back to claude (which is also the JSON-repair engine).
+        if agent == "claude" {
+            if let Some(codex) = &self.codex_bin {
+                self.log("fallback: trying codex".to_string());
+                match self.run_codex(codex, prompt, timeout).await {
+                    Ok(raw) => {
+                        if let Ok(v) = parse_json_payload::<T>(&raw) {
+                            return Ok((v, "codex".into()));
+                        }
+                    }
+                    Err(e) => {
+                        log::warn!("codex fallback failed: {e}");
+                        last_err = Some(e);
+                    }
+                }
+            }
+        } else {
+            self.log("fallback: trying claude".to_string());
+            match self.run_claude(prompt, web_tools, timeout, SMALL_MODEL).await {
                 Ok(raw) => {
                     if let Ok(v) = parse_json_payload::<T>(&raw) {
-                        return Ok((v, "codex".into()));
+                        return Ok((v, "claude".into()));
                     }
                 }
                 Err(e) => {
-                    log::warn!("codex fallback failed: {e}");
+                    log::warn!("claude fallback failed: {e}");
                     last_err = Some(e);
                 }
             }
         }
         Err(last_err.unwrap_or(GenError::NoBinary))
+    }
+
+    /// Custom agent contract: <bin> "<prompt>" prints the answer on stdout.
+    async fn run_custom(&self, bin: &str, prompt: &str, timeout: Duration) -> Result<String> {
+        let mut cmd = Command::new(bin);
+        cmd.arg(prompt)
+            .current_dir(&self.scratch_dir)
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
+        run_capture(cmd, timeout).await
     }
 
     fn claude_cmd(&self, prompt: &str, web_tools: bool, model: &str, stream: bool) -> Command {

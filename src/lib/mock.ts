@@ -118,6 +118,8 @@ let setupCompleted = false;
 let mockPaused = params.has('paused');
 let mockKioskLevel = (params.get('kiosk') ?? 'hard') as AppStateView['kiosk_level'];
 let mockModel = (params.get('model') ?? 'opus') as AppStateView['model'];
+let mockAgent = (params.get('agent') ?? 'claude') as AppStateView['agent'];
+let mockCustomBin = '';
 
 function appState(): AppStateView {
   const inSetup = location.search.includes('setup') && !setupCompleted;
@@ -134,6 +136,8 @@ function appState(): AppStateView {
     schedule_paused: mockPaused,
     kiosk_level: mockKioskLevel,
     model: mockModel,
+    agent: mockAgent,
+    custom_agent_bin: mockCustomBin,
   };
 }
 
@@ -225,6 +229,10 @@ export const mockApi = {
   },
   setModel: async (model: string) => {
     mockModel = model as AppStateView['model'];
+  },
+  setAgent: async (agent: string, customBin?: string) => {
+    mockAgent = agent as AppStateView['agent'];
+    mockCustomBin = customBin ?? '';
   },
   pauseSchedule: async () => {
     mockPaused = true;

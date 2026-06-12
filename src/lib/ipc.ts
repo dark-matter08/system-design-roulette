@@ -23,6 +23,8 @@ export interface AppStateView {
   schedule_paused: boolean;
   kiosk_level: 'advisory' | 'firm' | 'hard';
   model: 'opus' | 'sonnet' | 'haiku';
+  agent: 'claude' | 'codex' | 'custom';
+  custom_agent_bin: string;
 }
 
 export interface QuizQuestionView {
@@ -146,19 +148,32 @@ export const isTauri =
 const realApi = {
   markFrontendReady: () => invoke<void>('mark_frontend_ready'),
   getAppState: () => invoke<AppStateView>('get_app_state'),
-  checkAgent: () => invoke<boolean>('check_agent'),
+  checkAgent: (agent?: string, customBin?: string) =>
+    invoke<boolean>('check_agent', { agent, customBin }),
   completeSetup: (
     hour: number,
     minute: number,
     escapePhrase: string,
     kioskLevel = 'hard',
-    model = 'opus'
+    model = 'opus',
+    agent = 'claude',
+    customAgentBin = ''
   ) =>
     invoke<AppStateView>('complete_setup', {
-      input: { hour, minute, escape_phrase: escapePhrase, kiosk_level: kioskLevel, model },
+      input: {
+        hour,
+        minute,
+        escape_phrase: escapePhrase,
+        kiosk_level: kioskLevel,
+        model,
+        agent,
+        custom_agent_bin: customAgentBin,
+      },
     }),
   setKioskLevel: (level: string) => invoke<void>('set_kiosk_level', { level }),
   setModel: (model: string) => invoke<void>('set_model', { model }),
+  setAgent: (agent: string, customBin?: string) =>
+    invoke<void>('set_agent', { agent, customBin }),
   updateSchedule: (hour: number, minute: number) =>
     invoke<void>('update_schedule', { hour, minute }),
   pauseSchedule: () => invoke<void>('pause_schedule'),

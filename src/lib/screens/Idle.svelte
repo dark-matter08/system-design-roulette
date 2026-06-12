@@ -7,7 +7,8 @@
   import TimePicker from '../components/TimePicker.svelte';
   import EnforcementPicker from '../components/EnforcementPicker.svelte';
   import ModelPicker from '../components/ModelPicker.svelte';
-  import { Clock, Lock, Play, Pause, Rocket, Cpu } from 'lucide-svelte';
+  import AgentPicker from '../components/AgentPicker.svelte';
+  import { Clock, Lock, Play, Pause, Rocket, Cpu, Bot } from 'lucide-svelte';
 
   const owed = $derived(app.state?.owed ?? false);
   const streak = $derived(app.session?.streak ?? 0);
@@ -24,6 +25,29 @@
   let editingModel = $state(false);
   let modelSel = $state('opus');
   let modelSaved = $state(false);
+  let editingAgent = $state(false);
+  let agentSel = $state('claude');
+  let agentBin = $state('');
+  let agentSaved = $state(false);
+
+  $effect(() => {
+    agentSel = app.state?.agent ?? 'claude';
+    agentBin = app.state?.custom_agent_bin ?? '';
+  });
+
+  async function saveAgent() {
+    try {
+      await api.setAgent(agentSel, agentBin);
+      agentSaved = true;
+      setTimeout(() => {
+        agentSaved = false;
+        editingAgent = false;
+      }, 1200);
+      await app.refresh();
+    } catch (e) {
+      app.error = String(e);
+    }
+  }
 
   $effect(() => {
     modelSel = app.state?.model ?? 'opus';
@@ -170,9 +194,14 @@
         <button class="ghost mono-ghost" onclick={() => (editingEnf = !editingEnf)}>
           <Lock size={11} /> enforcement: {app.state?.kiosk_level ?? 'hard'}
         </button>
-        <button class="ghost mono-ghost" onclick={() => (editingModel = !editingModel)}>
-          <Cpu size={11} /> model: {app.state?.model ?? 'opus'}
+        <button class="ghost mono-ghost" onclick={() => (editingAgent = !editingAgent)}>
+          <Bot size={11} /> agent: {app.state?.agent ?? 'claude'}
         </button>
+        {#if app.state?.agent === 'claude'}
+          <button class="ghost mono-ghost" onclick={() => (editingModel = !editingModel)}>
+            <Cpu size={11} /> model: {app.state?.model ?? 'opus'}
+          </button>
+        {/if}
         {#if !app.state?.schedule_paused}
           <button class="ghost mono-ghost" onclick={pauseSched}><Pause size={11} /> pause schedule</button>
         {/if}
@@ -190,6 +219,14 @@
           <ModelPicker bind:value={modelSel} />
           <div class="enf-actions">
             <button class="ghost mono-ghost" onclick={saveModel}>{modelSaved ? 'saved' : 'apply'}</button>
+          </div>
+        </div>
+      {/if}
+      {#if editingAgent}
+        <div class="enf-edit">
+          <AgentPicker bind:agent={agentSel} bind:customBin={agentBin} />
+          <div class="enf-actions">
+            <button class="ghost mono-ghost" onclick={saveAgent}>{agentSaved ? 'saved' : 'apply'}</button>
           </div>
         </div>
       {/if}

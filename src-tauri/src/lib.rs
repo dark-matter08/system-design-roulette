@@ -93,6 +93,12 @@ pub fn run() {
             let model = std::sync::Arc::new(Mutex::new(
                 db::get_config(&conn, "model").ok().flatten().unwrap_or_else(|| "opus".to_string()),
             ));
+            let agent = std::sync::Arc::new(Mutex::new(
+                db::get_config(&conn, "agent").ok().flatten().unwrap_or_else(|| "claude".to_string()),
+            ));
+            let custom_bin = std::sync::Arc::new(Mutex::new(
+                db::get_config(&conn, "custom_agent_bin").ok().flatten().unwrap_or_default(),
+            ));
             // Live agent-activity feed: generator -> broadcast -> gen:log events.
             let (log_tx, mut log_rx) = tokio::sync::broadcast::channel::<String>(64);
             {
@@ -108,6 +114,8 @@ pub fn run() {
                 codex_bin,
                 data_dir.join("scratch"),
                 model,
+                agent,
+                custom_bin,
                 Some(log_tx),
             );
             app.manage(AppState {
@@ -203,6 +211,7 @@ pub fn run() {
             commands::update_schedule,
             commands::set_kiosk_level,
             commands::set_model,
+            commands::set_agent,
             commands::pause_schedule,
             commands::resume_schedule,
             commands::start_session,

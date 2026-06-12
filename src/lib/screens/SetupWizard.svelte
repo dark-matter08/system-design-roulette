@@ -7,11 +7,14 @@
   import TimePicker from '../components/TimePicker.svelte';
   import EnforcementPicker from '../components/EnforcementPicker.svelte';
   import ModelPicker from '../components/ModelPicker.svelte';
+  import AgentPicker from '../components/AgentPicker.svelte';
   import { Clock, Zap, Lock, Rocket, X } from 'lucide-svelte';
 
   let time = $state('19:00');
   let kioskLevel = $state('hard');
   let model = $state('opus');
+  let agent = $state('claude');
+  let customBin = $state('');
   let phrase = $state('I am choosing to skip my training today and I accept the broken streak');
   let phrase2 = $state('');
   let agentStatus = $state<'idle' | 'checking' | 'ok' | 'fail'>('idle');
@@ -20,8 +23,15 @@
 
   async function checkAgent() {
     agentStatus = 'checking';
-    agentStatus = (await api.checkAgent().catch(() => false)) ? 'ok' : 'fail';
+    agentStatus = (await api.checkAgent(agent, customBin).catch(() => false)) ? 'ok' : 'fail';
   }
+
+  // Switching agents invalidates a previous healthcheck result.
+  $effect(() => {
+    void agent;
+    void customBin;
+    agentStatus = 'idle';
+  });
 
   async function finish() {
     error = '';
@@ -36,7 +46,7 @@
     const [h, m] = time.split(':').map(Number);
     submitting = true;
     try {
-      await api.completeSetup(h, m, phrase.trim(), kioskLevel, model);
+      await api.completeSetup(h, m, phrase.trim(), kioskLevel, model, agent, customBin);
       await app.refresh();
     } catch (e) {
       error = String(e);
@@ -74,11 +84,13 @@
           badgeTone={agentStatus === 'ok' ? 'teal' : agentStatus === 'fail' ? 'red' : 'muted'}
         >
           {#snippet children()}
-            <div class="meta-label">HEALTHCHECK — claude -p ping</div>
+            <div class="meta-label">AGENT_CLI — who powers the teacher</div>
+            <AgentPicker bind:agent bind:customBin />
+            <div class="meta-label" style="margin-top: 14px;">HEALTHCHECK — {agent} ping</div>
             <div class="health-row">
               {#if agentStatus === 'ok'}
                 <StatusLED tone="ok" label="200 OK" />
-                <span class="hint">fallback: codex → bundled</span>
+                <span class="hint">fallback: {agent === 'claude' ? 'codex' : 'claude'} → bundled</span>
               {:else if agentStatus === 'fail'}
                 <StatusLED tone="err" label="unreachable" />
                 <span class="hint">bundled courses will serve</span>
@@ -88,8 +100,10 @@
                 <button class="ghost mono-ghost" onclick={checkAgent}>run healthcheck</button>
               {/if}
             </div>
-            <div class="meta-label" style="margin-top: 14px;">COURSE_MODEL — who writes your lessons</div>
-            <ModelPicker bind:value={model} />
+            {#if agent === 'claude'}
+              <div class="meta-label" style="margin-top: 14px;">COURSE_MODEL — who writes your lessons</div>
+              <ModelPicker bind:value={model} />
+            {/if}
           {/snippet}
         </NodeCard>
       </div>

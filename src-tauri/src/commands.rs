@@ -31,6 +31,38 @@ pub struct AppStateView {
     pub kiosk_level: String,
     /// Course-generation model: 'opus' | 'sonnet' | 'haiku'.
     pub model: String,
+    /// Primary CLI agent: 'claude' | 'codex' | 'custom'.
+    pub agent: String,
+    /// Binary path used when agent == 'custom'.
+    pub custom_agent_bin: String,
+}
+
+fn valid_agent(agent: &str) -> bool {
+    matches!(agent, "claude" | "codex" | "custom")
+}
+
+/// Switch the primary CLI agent (and the custom binary path when relevant).
+/// Applies to the next generation; the fallback chain adapts automatically.
+#[tauri::command]
+pub fn set_agent(state: State<'_, AppState>, agent: String, custom_bin: Option<String>) -> CmdResult<()> {
+    if !valid_agent(&agent) {
+        return Err(format!("unknown agent: {agent}"));
+    }
+    let custom = custom_bin.unwrap_or_default();
+    if agent == "custom" && custom.trim().is_empty() {
+        return Err("custom agent needs a binary path".into());
+    }
+    if agent == "custom" && !std::path::Path::new(custom.trim()).exists() {
+        return Err(format!("binary not found: {}", custom.trim()));
+    }
+    {
+        let conn = state.db.0.lock().unwrap();
+        db::set_config(&conn, "agent", &agent).map_err(err)?;
+        db::set_config(&conn, "custom_agent_bin", custom.trim()).map_err(err)?;
+    }
+    *state.generator.agent.lock().unwrap() = agent;
+    *state.generator.custom_bin.lock().unwrap() = custom.trim().to_string();
+    Ok(())
 }
 
 fn valid_model(model: &str) -> bool {
@@ -110,6 +142,8 @@ pub fn get_app_state(state: State<'_, AppState>) -> CmdResult<AppStateView> {
         schedule_paused,
         kiosk_level,
         model: state.generator.current_model(),
+        agent: state.generator.current_agent(),
+        custom_agent_bin: state.generator.current_custom_bin(),
     })
 }
 
@@ -145,14 +179,41 @@ pub fn resume_schedule(app: AppHandle, state: State<'_, AppState>) -> CmdResult<
     Ok(())
 }
 
+/// Ping whichever agent is currently selected (optionally an explicit one,
+/// so the setup wizard can test a choice before saving it).
 #[tauri::command]
-pub async fn check_agent(state: State<'_, AppState>) -> CmdResult<bool> {
+pub async fn check_agent(
+    state: State<'_, AppState>,
+    agent: Option<String>,
+    custom_bin: Option<String>,
+) -> CmdResult<bool> {
     let gen = state.generator.clone();
-    let out = tokio::process::Command::new(&gen.claude_bin)
-        .args(["-p", "--max-turns", "1", "--model", "haiku", "reply with exactly: pong"])
-        .current_dir(&gen.scratch_dir)
-        .output();
-    match tokio::time::timeout(std::time::Duration::from_secs(90), out).await {
+    let which = agent.unwrap_or_else(|| gen.current_agent());
+    const PING: &str = "reply with exactly: pong";
+    let mut cmd = match which.as_str() {
+        "codex" => {
+            let bin = gen.codex_bin.clone().unwrap_or_else(|| "codex".into());
+            let mut c = tokio::process::Command::new(bin);
+            c.args(["exec", "--skip-git-repo-check", PING]);
+            c
+        }
+        "custom" => {
+            let bin = custom_bin.unwrap_or_else(|| gen.current_custom_bin());
+            if bin.trim().is_empty() {
+                return Ok(false);
+            }
+            let mut c = tokio::process::Command::new(bin.trim());
+            c.arg(PING);
+            c
+        }
+        _ => {
+            let mut c = tokio::process::Command::new(&gen.claude_bin);
+            c.args(["-p", PING, "--max-turns", "1", "--model", "haiku"]);
+            c
+        }
+    };
+    let out = cmd.current_dir(&gen.scratch_dir).output();
+    match tokio::time::timeout(std::time::Duration::from_secs(120), out).await {
         Ok(Ok(o)) => Ok(o.status.success()),
         _ => Ok(false),
     }
@@ -167,6 +228,10 @@ pub struct SetupInput {
     pub kiosk_level: Option<String>,
     #[serde(default)]
     pub model: Option<String>,
+    #[serde(default)]
+    pub agent: Option<String>,
+    #[serde(default)]
+    pub custom_agent_bin: Option<String>,
 }
 
 #[tauri::command]
@@ -195,6 +260,18 @@ pub async fn complete_setup(
         }
         db::set_config(&conn, "model", model).map_err(err)?;
         *state.generator.model.lock().unwrap() = model.to_string();
+        let agent = input.agent.as_deref().unwrap_or("claude");
+        if !valid_agent(agent) {
+            return Err(format!("unknown agent: {agent}"));
+        }
+        let custom = input.custom_agent_bin.clone().unwrap_or_default();
+        if agent == "custom" && custom.trim().is_empty() {
+            return Err("custom agent needs a binary path".into());
+        }
+        db::set_config(&conn, "agent", agent).map_err(err)?;
+        db::set_config(&conn, "custom_agent_bin", custom.trim()).map_err(err)?;
+        *state.generator.agent.lock().unwrap() = agent.to_string();
+        *state.generator.custom_bin.lock().unwrap() = custom.trim().to_string();
         db::set_config(&conn, "onboarded", "1").map_err(err)?;
         // Day-1 course generates immediately so the first session is instant.
         db::jobs::enqueue(&conn, "course", &today).map_err(err)?;
