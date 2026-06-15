@@ -2,37 +2,83 @@ use crate::state::AppState;
 use std::sync::atomic::Ordering;
 use tauri::{AppHandle, Manager};
 
+/// User home directory, cross-platform (`HOME` on unix, `USERPROFILE` on Windows).
+fn home_dir() -> Option<std::path::PathBuf> {
+    std::env::var_os("HOME")
+        .or_else(|| std::env::var_os("USERPROFILE"))
+        .map(std::path::PathBuf::from)
+}
+
 /// Silence the room when the lock engages: pause every scriptable media
 /// player that's running, remember the system mute state, then mute.
-/// Best-effort — failures are logged and ignored.
+/// Best-effort and platform-specific — failures are logged and ignored.
+/// `prev_muted` records whether audio was *already* muted so `restore_media`
+/// only un-mutes if we were the ones who muted.
 fn pause_media(state: &AppState) {
-    let was_muted = std::process::Command::new("osascript")
-        .args(["-e", "output muted of (get volume settings)"])
-        .output()
-        .ok()
-        .map(|o| String::from_utf8_lossy(&o.stdout).trim() == "true");
-    *state.prev_muted.lock().unwrap() = was_muted;
+    #[cfg(target_os = "macos")]
+    {
+        let was_muted = std::process::Command::new("osascript")
+            .args(["-e", "output muted of (get volume settings)"])
+            .output()
+            .ok()
+            .map(|o| String::from_utf8_lossy(&o.stdout).trim() == "true");
+        *state.prev_muted.lock().unwrap() = was_muted;
 
-    for app_name in ["Music", "Spotify", "TV", "QuickTime Player", "VLC", "IINA"] {
-        let script = format!(
-            "if application \"{app_name}\" is running then tell application \"{app_name}\" to pause"
-        );
+        for app_name in ["Music", "Spotify", "TV", "QuickTime Player", "VLC", "IINA"] {
+            let script = format!(
+                "if application \"{app_name}\" is running then tell application \"{app_name}\" to pause"
+            );
+            let _ = std::process::Command::new("osascript")
+                .args(["-e", &script])
+                .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::null())
+                .spawn();
+        }
         let _ = std::process::Command::new("osascript")
-            .args(["-e", &script])
+            .args(["-e", "set volume output muted true"])
+            .spawn();
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        // PulseAudio/PipeWire via pactl; pause players via playerctl. Both are
+        // optional — missing binaries just no-op.
+        let was_muted = std::process::Command::new("pactl")
+            .args(["get-sink-mute", "@DEFAULT_SINK@"])
+            .output()
+            .ok()
+            .map(|o| String::from_utf8_lossy(&o.stdout).contains("yes"));
+        *state.prev_muted.lock().unwrap() = was_muted;
+
+        let _ = std::process::Command::new("playerctl")
+            .args(["--all-players", "pause"])
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::null())
             .spawn();
+        let _ = std::process::Command::new("pactl")
+            .args(["set-sink-mute", "@DEFAULT_SINK@", "1"])
+            .spawn();
     }
-    let _ = std::process::Command::new("osascript")
-        .args(["-e", "set volume output muted true"])
-        .spawn();
+
+    // Other platforms (Windows): no scriptable mute; leave state untouched.
+    #[cfg(not(any(target_os = "macos", target_os = "linux")))]
+    {
+        *state.prev_muted.lock().unwrap() = None;
+    }
 }
 
 /// Restore the pre-lock mute state (only unmute if WE muted).
 fn restore_media(state: &AppState) {
-    if let Some(false) = *state.prev_muted.lock().unwrap() {
+    let we_muted = matches!(*state.prev_muted.lock().unwrap(), Some(false));
+    if we_muted {
+        #[cfg(target_os = "macos")]
         let _ = std::process::Command::new("osascript")
             .args(["-e", "set volume output muted false"])
+            .spawn();
+
+        #[cfg(target_os = "linux")]
+        let _ = std::process::Command::new("pactl")
+            .args(["set-sink-mute", "@DEFAULT_SINK@", "0"])
             .spawn();
     }
     *state.prev_muted.lock().unwrap() = None;
@@ -256,8 +302,8 @@ pub fn engage(app: &AppHandle, state: &AppState) {
                 break;
             }
             // Dev back door: unlock immediately if ~/sdr-unlock exists.
-            if let Some(home) = std::env::var_os("HOME") {
-                if std::path::Path::new(&home).join("sdr-unlock").exists() {
+            if let Some(home) = home_dir() {
+                if home.join("sdr-unlock").exists() {
                     log::warn!("~/sdr-unlock present, releasing kiosk");
                     release(&app2, &state);
                     break;
