@@ -12,6 +12,11 @@ on:
 permissions:
   contents: write # needed to create the GitHub Release and upload bundles
 
+env:
+  # Survive transient crates.io fetch hiccups instead of failing the build.
+  CARGO_NET_RETRY: "10"
+  CARGO_NET_GIT_FETCH_WITH_CLI: "true"
+
 jobs:
   release:
     strategy:
