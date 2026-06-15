@@ -340,17 +340,27 @@ impl Generator {
     ) -> Result<String> {
         match agent {
             "codex" => {
-                let bin = self.codex_bin.clone().unwrap_or_else(|| "codex".into());
-                self.log(format!("spawn: codex agent ({bin})"));
+                let bin = self.codex_bin.clone().or_else(|| resolve_on_path("codex")).unwrap_or_else(|| "codex".into());
+                self.log(format!("spawn: codex exec ({bin})"));
                 self.run_codex(&bin, prompt, timeout).await
             }
+            "cursor" => {
+                let bin = resolve_on_path("cursor-agent").ok_or(GenError::NoBinary)?;
+                self.log(format!("spawn: cursor-agent ({bin})"));
+                self.run_cursor(&bin, prompt, timeout).await
+            }
+            "gemini" => {
+                let bin = resolve_on_path("gemini").ok_or(GenError::NoBinary)?;
+                self.log(format!("spawn: gemini ({bin})"));
+                self.run_gemini(&bin, prompt, timeout).await
+            }
             "custom" => {
-                let bin = self.current_custom_bin();
-                if bin.trim().is_empty() {
+                let spec = self.current_custom_bin();
+                if spec.trim().is_empty() {
                     return Err(GenError::NoBinary);
                 }
-                self.log(format!("spawn: custom agent ({bin})"));
-                self.run_custom(&bin, prompt, timeout).await
+                self.log(format!("spawn: custom ({spec})"));
+                self.run_custom(&spec, prompt, timeout).await
             }
             _ => self.run_claude(prompt, web_tools, timeout, model).await,
         }
@@ -416,11 +426,28 @@ impl Generator {
         Err(last_err.unwrap_or(GenError::NoBinary))
     }
 
-    /// Custom agent contract: <bin> "<prompt>" prints the answer on stdout.
-    async fn run_custom(&self, bin: &str, prompt: &str, timeout: Duration) -> Result<String> {
+    /// Custom agent. The configured string is whitespace-split into binary +
+    /// args; any `{prompt}` token is replaced with the prompt (lets users
+    /// encode flags, e.g. `mycli --print {prompt}`). With no `{prompt}` token,
+    /// the prompt is appended as the final argument. No shell — no injection.
+    async fn run_custom(&self, spec: &str, prompt: &str, timeout: Duration) -> Result<String> {
+        let mut tokens = spec.split_whitespace();
+        let bin = tokens.next().ok_or(GenError::NoBinary)?;
+        let rest: Vec<&str> = tokens.collect();
         let mut cmd = Command::new(bin);
-        cmd.arg(prompt)
-            .current_dir(&self.scratch_dir)
+        let mut substituted = false;
+        for tok in &rest {
+            if tok.contains("{prompt}") {
+                cmd.arg(tok.replace("{prompt}", prompt));
+                substituted = true;
+            } else {
+                cmd.arg(tok);
+            }
+        }
+        if !substituted {
+            cmd.arg(prompt);
+        }
+        cmd.current_dir(&self.scratch_dir)
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
@@ -558,9 +585,47 @@ impl Generator {
     }
 
     async fn run_codex(&self, codex_bin: &str, prompt: &str, timeout: Duration) -> Result<String> {
+        // codex exec streams event logs to stdout; --output-last-message writes
+        // ONLY the final assistant message to a file, which is what we parse.
+        let out_file = self.scratch_dir.join("codex-last.txt");
+        let _ = std::fs::remove_file(&out_file);
         let mut cmd = Command::new(codex_bin);
         cmd.arg("exec")
             .arg("--skip-git-repo-check")
+            .arg("--color")
+            .arg("never")
+            .arg("--output-last-message")
+            .arg(&out_file)
+            .arg(prompt)
+            .current_dir(&self.scratch_dir)
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
+        let stdout = run_capture(cmd, timeout).await?;
+        match std::fs::read_to_string(&out_file) {
+            Ok(s) if !s.trim().is_empty() => Ok(s),
+            _ => Ok(stdout), // fall back to stdout if the file wasn't written
+        }
+    }
+
+    /// cursor-agent -p --output-format text "<prompt>"  (needs auth or CURSOR_API_KEY)
+    async fn run_cursor(&self, bin: &str, prompt: &str, timeout: Duration) -> Result<String> {
+        let mut cmd = Command::new(bin);
+        cmd.arg("-p")
+            .arg("--output-format")
+            .arg("text")
+            .arg(prompt)
+            .current_dir(&self.scratch_dir)
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
+        run_capture(cmd, timeout).await
+    }
+
+    /// gemini -p "<prompt>"  (text output by default)
+    async fn run_gemini(&self, bin: &str, prompt: &str, timeout: Duration) -> Result<String> {
+        let mut cmd = Command::new(bin);
+        cmd.arg("-p")
             .arg(prompt)
             .current_dir(&self.scratch_dir)
             .stdin(Stdio::null())
@@ -643,6 +708,30 @@ pub fn parse_json_payload<T: serde::de::DeserializeOwned>(raw: &str) -> Result<T
     }
     serde_json::from_str::<T>(raw.trim())
         .map_err(|e| GenError::Parse(format!("{e}; head: {}", raw.chars().take(300).collect::<String>())))
+}
+
+/// Resolve a binary by name: common install dirs first, then a login-shell
+/// `which` (launchd has no nvm/PATH). Returns None if not found.
+pub fn resolve_on_path(name: &str) -> Option<String> {
+    let home = std::env::var("HOME").unwrap_or_default();
+    let candidates = [
+        format!("{home}/.local/bin/{name}"),
+        format!("/opt/homebrew/bin/{name}"),
+        format!("/usr/local/bin/{name}"),
+    ];
+    for c in &candidates {
+        if std::path::Path::new(c).exists() {
+            return Some(c.clone());
+        }
+    }
+    let out = std::process::Command::new("zsh").args(["-lc", &format!("which {name}")]).output().ok()?;
+    if out.status.success() {
+        let p = String::from_utf8_lossy(&out.stdout).trim().to_string();
+        if !p.is_empty() && std::path::Path::new(&p).exists() {
+            return Some(p);
+        }
+    }
+    None
 }
 
 pub fn pick_fallback(preferred_title: &str) -> FallbackCourse {

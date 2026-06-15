@@ -1,7 +1,7 @@
 <script lang="ts">
-  /** Primary CLI agent selector. CLAUDE gets the model picker and streaming
-   *  logs; CODEX uses the OpenAI Codex CLI; CUSTOM accepts any binary that
-   *  takes the prompt as its final argument and prints the answer. */
+  /** Primary CLI agent selector. CLAUDE gets the model picker, web research
+   *  and streaming logs; codex/cursor/gemini are first-class with their
+   *  correct non-interactive invocations; CUSTOM runs any other CLI. */
   let {
     agent = $bindable('claude'),
     customBin = $bindable(''),
@@ -18,13 +18,25 @@
       id: 'codex',
       name: 'CODEX',
       tag: 'openai codex cli',
-      desc: 'Runs courses through `codex exec`. Uses whatever model your codex CLI is configured with. No live log streaming; claude (if installed) remains the fallback repair engine.',
+      desc: 'Runs `codex exec` and reads the final message. Uses whatever model your codex CLI is configured with. Needs codex installed and a valid ~/.codex/config.toml. Claude (if present) is the JSON-repair fallback.',
+    },
+    {
+      id: 'cursor',
+      name: 'CURSOR',
+      tag: 'cursor-agent cli',
+      desc: 'Runs `cursor-agent -p --output-format text`. Needs cursor-agent installed and authenticated (`cursor-agent login` or CURSOR_API_KEY).',
+    },
+    {
+      id: 'gemini',
+      name: 'GEMINI',
+      tag: 'google gemini cli',
+      desc: 'Runs `gemini -p`. Needs the gemini CLI installed and authenticated.',
     },
     {
       id: 'custom',
       name: 'CUSTOM',
-      tag: 'any cli — cursor, gemini…',
-      desc: 'Any binary that accepts the prompt as its final argument and prints the answer to stdout (e.g. cursor-agent, gemini). Output should end with one fenced JSON block as instructed by the prompt.',
+      tag: 'any other cli',
+      desc: 'Any CLI that prints the answer to stdout. Use {prompt} in the command to place the prompt (lets you add flags); without it the prompt is appended as the final argument.',
     },
   ];
 </script>
@@ -44,19 +56,19 @@
   <input
     class="agt-bin mono"
     type="text"
-    placeholder="/absolute/path/to/agent-binary"
+    placeholder={'e.g. /usr/local/bin/mycli --print {prompt}'}
     bind:value={customBin}
   />
 {/if}
 
 <style>
   .apicker {
-    display: flex;
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
     gap: 8px;
     margin-top: 8px;
   }
   .agt {
-    flex: 1;
     display: flex;
     flex-direction: column;
     gap: 3px;

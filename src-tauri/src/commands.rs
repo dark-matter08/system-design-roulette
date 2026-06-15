@@ -38,7 +38,7 @@ pub struct AppStateView {
 }
 
 fn valid_agent(agent: &str) -> bool {
-    matches!(agent, "claude" | "codex" | "custom")
+    matches!(agent, "claude" | "codex" | "cursor" | "gemini" | "custom")
 }
 
 /// Switch the primary CLI agent (and the custom binary path when relevant).
@@ -192,18 +192,41 @@ pub async fn check_agent(
     const PING: &str = "reply with exactly: pong";
     let mut cmd = match which.as_str() {
         "codex" => {
-            let bin = gen.codex_bin.clone().unwrap_or_else(|| "codex".into());
+            let bin = gen.codex_bin.clone()
+                .or_else(|| crate::generator::resolve_on_path("codex"))
+                .unwrap_or_else(|| "codex".into());
             let mut c = tokio::process::Command::new(bin);
-            c.args(["exec", "--skip-git-repo-check", PING]);
+            c.args(["exec", "--skip-git-repo-check", "--color", "never", PING]);
+            c
+        }
+        "cursor" => {
+            let Some(bin) = crate::generator::resolve_on_path("cursor-agent") else { return Ok(false); };
+            let mut c = tokio::process::Command::new(bin);
+            c.args(["-p", "--output-format", "text", PING]);
+            c
+        }
+        "gemini" => {
+            let Some(bin) = crate::generator::resolve_on_path("gemini") else { return Ok(false); };
+            let mut c = tokio::process::Command::new(bin);
+            c.args(["-p", PING]);
             c
         }
         "custom" => {
-            let bin = custom_bin.unwrap_or_else(|| gen.current_custom_bin());
-            if bin.trim().is_empty() {
+            // Parse the spec like the generator does: binary + args, {prompt} token.
+            let spec = custom_bin.unwrap_or_else(|| gen.current_custom_bin());
+            let spec = spec.trim();
+            if spec.is_empty() {
                 return Ok(false);
             }
-            let mut c = tokio::process::Command::new(bin.trim());
-            c.arg(PING);
+            let mut toks = spec.split_whitespace();
+            let Some(bin) = toks.next() else { return Ok(false); };
+            let mut c = tokio::process::Command::new(bin);
+            let mut subbed = false;
+            for t in toks {
+                if t.contains("{prompt}") { c.arg(t.replace("{prompt}", PING)); subbed = true; }
+                else { c.arg(t); }
+            }
+            if !subbed { c.arg(PING); }
             c
         }
         _ => {
